@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="theme-color" content="#F5F4EF" />
+    <title>%WEB_TITLE%</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <!--
+      Splash web OMDA : logo centré sur fond warmGray le temps que React charge.
+      Visible uniquement pendant le chargement : le premier rendu de React
+      dans #root remplace automatiquement ce contenu (comportement standard
+      Expo / react-dom, aucun code JS nécessaire).
+      Les valeurs hex sont admises ici (fichier HTML statique hors composants
+      React) — mêmes tokens que `app.json` : omda-warmGray / omda-textGray.
+    -->
+    <style id="omda-splash">
+      #omda-splash {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #f5f4ef;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+      }
+      #omda-splash img {
+        width: 200px;
+        height: auto;
+        max-width: 60vw;
+      }
+      #omda-splash p {
+        margin: 16px 0 0;
+        font-size: 14px;
+        font-weight: 400;
+        color: #6b675e;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root">
+      <!-- Splash web OMDA : remplacé dès le premier rendu de React. -->
+      <div id="omda-splash">
+        <!--
+          Logo servi depuis le dossier static `public/` : le dossier `assets/`
+          de la racine n'est PAS servi sur le web et `/assets` est un chemin
+          réservé à Metro (404 vérifié en dev).
+        -->
+        <img src="/splash.png" alt="Logo OMDA" />
+        <p>Chargement…</p>
+      </div>
+    </div>
+  </body>
+</html>

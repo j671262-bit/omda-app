@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "OMDA",
+    "slug": "omda-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "omdamobile",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "mg.omda.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F4EF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "mg.omda.mobile"
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F4EF"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "OMDA a besoin d’accéder à vos photos pour joindre votre photo d’identité ou vos justificatifs.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-audio",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F5F4EF"
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}
