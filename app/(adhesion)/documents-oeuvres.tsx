@@ -574,7 +574,8 @@ export default function DocumentsOeuvresScreen() {
   /** Envoi d'un fichier par le service (progression visible et reprise sur erreur). */
   const televerser = useCallback(
     async (cible: CibleEnvoi, selection: FichierSelectionne) => {
-      const bucket = cible.nature === 'piece' ? BUCKET_PIECES : BUCKET_OEUVRES;
+      // Les attestations sont des documents : elles vont dans le bucket « pieces » (exigé par l'API et la base).
+      const bucket = cible.nature === 'oeuvre' ? BUCKET_OEUVRES : BUCKET_PIECES;
       const dossier =
         cible.nature === 'piece'
           ? cible.type
@@ -719,7 +720,8 @@ export default function DocumentsOeuvresScreen() {
   /** Choix d'un fichier puis envoi : contrôle 20 Mo / type MIME avant téléversement. */
   const selectionner = useCallback(
     async (cible: CibleEnvoi) => {
-      const bucket = cible.nature === 'piece' ? BUCKET_PIECES : BUCKET_OEUVRES;
+      // Les attestations sont des documents : elles vont dans le bucket « pieces » (exigé par l'API et la base).
+      const bucket = cible.nature === 'oeuvre' ? BUCKET_OEUVRES : BUCKET_PIECES;
       const estAttestation = cible.nature === 'attestation';
       const estPhoto = cible.nature === 'piece' && cible.type === 'PHOTO';
 

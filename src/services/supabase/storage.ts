@@ -25,7 +25,6 @@
  *   l'application ne fournissent des URI locales que sur iOS et Android ;
  * - aucune erreur n'est jamais levée : tout passe par `Result`.
  */
-import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 import {
@@ -247,73 +246,93 @@ function classerStatutRefuse(statut: number, corps: string): ResultErr {
 }
 
 /**
- * Envoi NATIF du fichier (progression 0 → 99 %, puis 100 % à la confirmation) :
- * `supabase-js` ne sait pas rapporter la progression d'un envoi dans React
- * Native, la route REST du Storage est donc appelée directement.
+ * Envoi du fichier par XMLHttpRequest + FormData (multipart), la même route REST
+ * que `supabase.storage.from(bucket).upload()`. Progression réelle (0 → 99 %, puis
+ * 100 % à la confirmation) via `upload.onprogress`.
+ *
+ * Pourquoi pas `expo-file-system` : sur Android, son module d'envoi refuse de lire
+ * les fichiers copiés par le sélecteur de documents (`cache/DocumentPicker/…`,
+ * « Location … isn't readable »). Le réseau natif de React Native lit directement
+ * l'URI `{ uri, name, type }` du FormData, sans cette restriction.
  */
-async function envoyerFichier(
+function envoyerFichier(
   entree: TeleversementEntree,
   jeton: string,
   options?: OptionsEnvoiStockage,
 ): Promise<Result<FichierTeleverse>> {
-  const tache = FileSystem.createUploadTask(
-    urlObjet(entree.bucket, cheminDansBucket(entree.bucket, entree.chemin_stockage)),
-    entree.fichier_uri,
-    {
-      httpMethod: 'POST',
-      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      headers: {
-        authorization: `Bearer ${jeton}`,
-        apikey: SUPABASE_ANON_KEY,
-        'content-type': entree.mime_type,
-        'cache-control': 'max-age=3600',
-        'x-upsert': options?.remplacer ? 'true' : 'false',
-      },
-    },
-    (progression) => {
-      if (progression.totalBytesExpectedToSend <= 0) {
+  return new Promise<Result<FichierTeleverse>>((resolve) => {
+    const signal = options?.signal;
+    if (signal?.aborted) {
+      resolve(refusAnnulation());
+      return;
+    }
+
+    const requete = new XMLHttpRequest();
+    let termine = false;
+    const annuler = () => requete.abort();
+    const conclure = (resultat: Result<FichierTeleverse>) => {
+      if (termine) {
         return;
       }
-      const pourcentage = Math.min(
-        99,
-        Math.round((progression.totalBytesSent / progression.totalBytesExpectedToSend) * 100),
+      termine = true;
+      signal?.removeEventListener('abort', annuler);
+      resolve(resultat);
+    };
+
+    requete.upload.onprogress = (evenement) => {
+      if (evenement.lengthComputable && evenement.total > 0) {
+        options?.onProgression?.(Math.min(99, Math.round((evenement.loaded / evenement.total) * 100)));
+      }
+    };
+    requete.onload = () => {
+      if (requete.status < 200 || requete.status >= 300) {
+        conclure(classerStatutRefuse(requete.status, requete.responseText ?? ''));
+        return;
+      }
+      options?.onProgression?.(100);
+      conclure(
+        ok({
+          chemin_stockage: entree.chemin_stockage.trim(),
+          mime_type: entree.mime_type,
+          taille_octets: entree.taille_octets,
+        }),
       );
-      options?.onProgression?.(pourcentage);
-    },
-  );
+    };
+    requete.onerror = () => {
+      console.warn('[Storage] Échec réseau du téléversement (XHR).');
+      conclure(erreurReseau('téléversement interrompu (aucune réponse du serveur)'));
+    };
+    requete.ontimeout = () => conclure(erreurReseau('délai dépassé pendant le téléversement'));
+    requete.onabort = () => conclure(refusAnnulation());
 
-  const signal = options?.signal;
-  const annuler = () => {
-    void tache.cancelAsync();
-  };
-  if (signal?.aborted) {
-    void tache.cancelAsync();
-    return refusAnnulation();
-  }
-  signal?.addEventListener('abort', annuler, { once: true });
+    try {
+      requete.open(
+        'POST',
+        urlObjet(entree.bucket, cheminDansBucket(entree.bucket, entree.chemin_stockage)),
+      );
+      requete.timeout = 120000;
+      requete.setRequestHeader('authorization', `Bearer ${jeton}`);
+      requete.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+      requete.setRequestHeader('x-upsert', options?.remplacer ? 'true' : 'false');
 
-  try {
-    const reponse = await tache.uploadAsync();
-    if (!reponse || signal?.aborted) {
-      return refusAnnulation();
+      const formulaire = new FormData();
+      formulaire.append('cacheControl', '3600');
+      formulaire.append(
+        '',
+        {
+          uri: entree.fichier_uri,
+          name: entree.nom_fichier || 'fichier',
+          type: entree.mime_type,
+        } as unknown as Blob,
+      );
+
+      signal?.addEventListener('abort', annuler, { once: true });
+      requete.send(formulaire);
+    } catch (cause) {
+      console.warn('[Storage] Échec du téléversement :', cause);
+      conclure(erreurReseau(texteDe(cause)));
     }
-    if (reponse.status < 200 || reponse.status >= 300) {
-      return classerStatutRefuse(reponse.status, reponse.body ?? '');
-    }
-    options?.onProgression?.(100);
-    return ok({
-      chemin_stockage: entree.chemin_stockage.trim(),
-      mime_type: entree.mime_type,
-      taille_octets: entree.taille_octets,
-    });
-  } catch (cause) {
-    if (signal?.aborted) {
-      return refusAnnulation();
-    }
-    return erreurReseau(texteDe(cause));
-  } finally {
-    signal?.removeEventListener('abort', annuler);
-  }
+  });
 }
 
 /* ------------------------------------------------- Téléversement (publique) */

@@ -150,7 +150,9 @@ function traduireErreur(erreur: ErreurApp): string {
 function messageErreurEnvoi(erreur: ErreurApp): string {
   if (erreur.type === 'metier') return erreur.message;
   if (erreur.type === 'reseau') {
-    return 'La connexion a été interrompue pendant l’envoi. Vérifiez votre réseau puis réessayez.';
+    const base = 'La connexion a été interrompue pendant l’envoi. Vérifiez votre réseau puis réessayez.';
+    // Diagnostic (développement uniquement) : cause technique réelle.
+    return __DEV__ && erreur.cause ? `${base}\n[Détail : ${erreur.cause}]` : base;
   }
   return 'L’envoi du fichier a échoué (service indisponible). Veuillez réessayer.';
 }
