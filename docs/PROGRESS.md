@@ -1,3 +1,16 @@
+- ÉTAPE 06 — CONFIRMATION ET SUIVI DU CANDIDAT (aucun fichier code modifié — écrans déjà conformes, `docs/PROGRESS.md` uniquement) :
+  Vérifications effectuées sur `app/(adhesion)/confirmation.tsx` et `app/(candidat)/suivi.tsx` :
+  1. Informations retournées après l'envoi : `confirmation.tsx` affiche `numero_dossier`, `code_suivi`, `statut`, `date_soumission`, `delai_indicatif_heures` depuis les paramètres de navigation (écran K) ou l'historique local (`historiqueDossiers`). Aucun statut simulé.
+  2. Numéro de dossier et code de suivi affichés en clair, texte sélectionnable, copie via `expo-clipboard`.
+  3. `GET /v1/suivi/{numero_dossier}` : `suivi.tsx` appelle `candidateApi.suivreDemande({ numero_dossier, code_suivi })` ; `HttpCandidateApi.suivreDemande` (ligne 704-709) envoie les en-têtes `X-Numero-Dossier` + `X-Code-Suivi` via `enTetesDossier`.
+  4. Statut réel retourné par le serveur : les deux écrans affichent le statut reçu, sans déduction côté client.
+  5. États Loading / Error + « Réessayer » / Vide / Contenu : intégrés sur les deux écrans.
+  6. Documents non présentés comme validés sans confirmation serveur : aucun document n'est affiché comme validé sur ces écrans.
+  7. Cas REJETEE : motif de rejet affiché (`motif_rejet`). Cas VALIDEE : montant dû affiché (servi par le serveur). Cas ADHESION_TERMINEE : message de confirmation.
+  Règles métier : aucune modification nécessaire — les écrans de confirmation et de suivi ne manipulent pas de fiches de déclaration ni d'attestations (ces vérifications sont faites aux écrans précédents).
+  Contraintes : aucun compte Supabase Auth créé, aucune migration SQL modifiée, aucune donnée existante modifiée, aucun nouveau champ de base de données, aucun formulaire fictif créé.
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie).
+
 - ÉTAPE 05 — VALIDATION ET ENVOI FINAL D'UNE DEMANDE (fichiers modifiés : `app/(adhesion)/recapitulatif.tsx`, `server/src/server.mjs`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN formulaire fictif créé, AUCUN nouveau champ de base de données) :
   1. `app/(adhesion)/recapitulatif.tsx` :
      - Remplacement des commentaires obsolètes "règle métier 8" par les Règles 2 et 3.
