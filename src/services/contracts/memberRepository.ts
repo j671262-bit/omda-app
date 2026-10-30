@@ -95,10 +95,12 @@ export interface MemberRepository {
   obtenirOeuvre(oeuvre_id: UUID): Promise<Result<Oeuvre>>;
 
   /**
-   * Attestations de diffusion d'une œuvre (au moins une, règle métier 8).
+   * Attestations de diffusion d'une œuvre (règle métier 3 : conditionnelle
+   * selon le cas A/B/C).
    * Elles restent REMPLAÇABLES tant que l'œuvre figure dans
-   * `STATUTS_OEUVRE_MODIFIABLES` : une œuvre conserve toujours son attestation
-   * (aucune suppression possible), l'interface ne propose que le remplacement.
+   * `STATUTS_OEUVRE_MODIFIABLES` : une œuvre conserve toujours son
+   * attestation (aucune suppression possible), l'interface ne propose que le
+   * remplacement.
    */
   listerAttestationsOeuvre(oeuvre_id: UUID): Promise<Result<AttestationDiffusion[]>>;
 
@@ -189,10 +191,11 @@ export type CategoriesMembre = {
  * Œuvre jointe à une demande de catégorie supplémentaire (règle métier 9) :
  * un titre, le fichier de l'œuvre déjà téléversé (bucket `oeuvres`) et son
  * attestation de diffusion — une par œuvre, comme pour l'adhésion (règle
- * métier 8).
+ * métier 3, cas B).
  */
 export type OeuvreDemandeCategorieEntree = {
   titre: string;
+  fiche_declaration: FichierDepose;
   fichier: FichierDepose;
   attestation: FichierDepose;
 };
@@ -233,6 +236,8 @@ export type CreerOeuvreEntree = {
   categorie_id: UUID;
   description?: string | null;
   annee?: number | null;
+  /** Fiche de déclaration d'œuvre, obligatoire (règle métier 2). */
+  fiche_declaration: FichierDepose;
 };
 
 /**
@@ -250,17 +255,23 @@ export type MettreAJourOeuvreEntree = {
    */
   fichier?: FichierDepose;
   /**
-   * Remplace l'attestation de diffusion (règle métier 8 : au moins une
-   * attestation par œuvre, jamais supprimable). Absent = l'attestation
-   * enregistrée est conservée.
+   * Remplace l'attestation de diffusion (règle métier 3 : conditionnelle
+   * selon le cas A/B/C). Absent = l'attestation actuelle est conservée.
    */
   attestation?: FichierDepose;
+  /**
+   * Remplace la fiche de déclaration d'œuvre (règle métier 2).
+   * Absent = la fiche actuelle est conservée.
+   */
+  fiche_declaration?: FichierDepose;
 };
 
 export type SoumettreOeuvreEntree = {
   oeuvre_id: UUID;
   fichier: FichierDepose;
-  /** Au moins une attestation de diffusion (règle métier 8). */
+  /** Fiche de déclaration d'œuvre, obligatoire (règle métier 2). */
+  fiche_declaration: FichierDepose;
+  /** Attestation de diffusion, obligatoire selon le cas A/B/C (règle métier 3). */
   attestations: FichierDepose[];
 };
 

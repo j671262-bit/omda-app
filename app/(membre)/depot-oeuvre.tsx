@@ -45,7 +45,12 @@ import {
  *   (`soumettreOeuvre`) : l'envoi passe l'œuvre à `ENVOYEE` et ne déclenche
  *   AUCUN paiement (le paiement des frais de dépôt n'est proposé qu'après
  *   `VALIDEE`, depuis la fiche de l'œuvre) ;
- * - au moins une attestation de diffusion par œuvre (règle métier 8) ;
+ * - fiche de déclaration d'œuvre obligatoire (règle métier 2), dont le modèle
+ *   dépend de la catégorie de l'œuvre ;
+ * - attestation de diffusion conditionnelle (règle métier 3) : obligatoire pour
+ *   le parcours candidat (cas A), obligatoire pour une catégorie supplémentaire
+ *   (cas B), non obligatoire pour un dépôt dans une catégorie déjà détenue
+ *   (cas C) ;
  * - les catégories proposées viennent du service : appartenances `ACTIVE` du
  *   membre croisées avec le référentiel actif — aucune catégorie codée en dur ;
  * - téléversement avec progression, annulation et reprise (`UploadTile`),
@@ -91,7 +96,7 @@ const ENVOI_VIDE: EnvoiFichier = {
 };
 
 /** Cible d'un envoi de fichier sur cet écran. */
-type CibleEnvoi = 'fichier' | 'attestation';
+type CibleEnvoi = 'fichier' | 'fiche_declaration' | 'attestation';
 
 /** Fichier brut renvoyé par `expo-document-picker`. */
 type CandidatFichier = {
@@ -233,6 +238,7 @@ export default function DepotOeuvreScreen() {
   const [description, setDescription] = useState('');
   const [annee, setAnnee] = useState('');
   const [envoiFichier, setEnvoiFichier] = useState<EnvoiFichier>(ENVOI_VIDE);
+  const [envoiFicheDeclaration, setEnvoiFicheDeclaration] = useState<EnvoiFichier>(ENVOI_VIDE);
   const [envoiAttestation, setEnvoiAttestation] = useState<EnvoiFichier>(ENVOI_VIDE);
 
   const [erreurTitre, setErreurTitre] = useState<string | null>(null);
@@ -394,10 +400,14 @@ export default function DepotOeuvreScreen() {
 
   /* -------------------------------------------------------- Moteur d'envoi */
 
-  /** Applique une modification à l'envoi visé (fichier de l'œuvre ou attestation). */
+  /** Applique une modification à l'envoi visé (fichier de l'œuvre, fiche de déclaration ou attestation). */
   const definirEnvoi = useCallback((cible: CibleEnvoi, maj: Partial<EnvoiFichier>) => {
     if (cible === 'fichier') {
       setEnvoiFichier((precedent) => ({ ...precedent, ...maj }));
+      return;
+    }
+    if (cible === 'fiche_declaration') {
+      setEnvoiFicheDeclaration((precedent) => ({ ...precedent, ...maj }));
       return;
     }
     setEnvoiAttestation((precedent) => ({ ...precedent, ...maj }));
@@ -484,10 +494,12 @@ export default function DepotOeuvreScreen() {
   /** Sélection d'un document : formats et taille contrôlés AVANT tout envoi. */
   const selectionnerFichier = useCallback(
     async (cible: CibleEnvoi) => {
-      const estAttestation = cible === 'attestation';
+      // La fiche de déclaration et l'attestation sont des documents :
+      // seuls PDF, JPEG, PNG sont acceptés (pas d'audio).
+      const estDocument = cible === 'attestation' || cible === 'fiche_declaration';
       try {
         const resultat = await DocumentPicker.getDocumentAsync({
-          type: estAttestation ? [...TYPES_MIME_ATTESTATION] : [...TYPES_MIME_AUTORISES.oeuvres],
+          type: estDocument ? [...TYPES_MIME_ATTESTATION] : [...TYPES_MIME_AUTORISES.oeuvres],
           multiple: false,
           copyToCacheDirectory: true,
         });
@@ -504,7 +516,7 @@ export default function DepotOeuvreScreen() {
             mime_fourni: actif.mimeType,
             taille_octets: actif.size ?? 0,
           },
-          estAttestation,
+          estDocument,
         );
 
         if (!validation.ok) {

@@ -31,11 +31,26 @@ export type Oeuvre = {
   updated_at: HorodatageISO;
 };
 
-/**
- * Attestation de diffusion liée à une œuvre — table `attestation_diffusion`.
- * Obligatoire : au moins une attestation par œuvre (règle métier 8).
+/** Attestation de diffusion liée à une œuvre — table `attestation_diffusion`. 
+ * Obligatoire selon la règle métier 3 (cas A et B pour le parcours candidat,
+ * non obligatoire pour le cas C : dépôt dans une catégorie déjà détenue).
+ * Distincte de la fiche de déclaration (règle 4).
  */
 export type AttestationDiffusion = {
+  id: UUID;
+  oeuvre_id: UUID;
+  chemin_stockage: string;
+  mime_type: TypeMime;
+  taille_octets: TailleOctets;
+  created_at: HorodatageISO;
+};
+
+/** Fiche de déclaration d'œuvre liée à une œuvre — table `fiche_declaration`.
+ * Obligatoire pour chaque œuvre (règle métier 2).
+ * Le modèle dépend de la catégorie de l'œuvre.
+ * Distincte de l'attestation de diffusion (règle 4).
+ */
+export type FicheDeclaration = {
   id: UUID;
   oeuvre_id: UUID;
   chemin_stockage: string;

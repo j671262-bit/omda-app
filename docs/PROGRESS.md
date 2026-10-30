@@ -1,3 +1,47 @@
+- ÉTAPE 12 — COTISATIONS ET HISTORIQUE DES PAIEMENTS (aucun fichier code modifié — aucune modification nécessaire, contrainte ÉTAPE 00 respectée) :
+  1. `app/(membre)/paiement-membre.tsx` — lecture uniquement, aucune modification :
+     - Paiement de dépôt d'œuvre (`DEPOT_OEUVRE`) uniquement ; aucune cotisation (retirée Étape 28)
+     - Montant provient EXCLUSIVEMENT du service (`estimerMontant`) — jamais codé en dur
+     - Aucun succès annoncé avant confirmation serveur (`paiement.statut = 'REUSSI'` via polling)
+     - Bouton « Payer » neutre (`secondary`) ; vert `status-success` uniquement après `REUSSI`
+     - 4 états obligatoires : chargement / erreur + « Réessayer » / vide / contenu
+     - Référence interne (`reference_interne`) affichée après confirmation
+  2. `src/models/paiements.ts` — lecture uniquement :
+     - `TypePaiement = 'ADHESION' | 'DEPOT_OEUVre'` — aucun type `COTISATION` (retiré migration 0006)
+     - `Paiement` : `reference_interne`, `reference_externe`, `date_confirmation`, `motif_echec` présents
+  3. `src/services/contracts/memberRepository.ts` — lecture uniquement :
+     - `initierPaiement()` et `obtenirPaiement()` uniquement — pas de `listerPaiements()`
+     - Pas d'écran d'historique des paiements
+  4. `app/(membre)/(tabs)/accueil.tsx` — lecture uniquement :
+     - `TableauDeBordMembre` : aucun champ cotisation/paiement (retiré Étape 28)
+     - Cartes : Œuvres déposées, Notifications non lues uniquement
+  5. `supabase/migrations/0006_suppression_cotisations.sql` — lecture uniquement :
+     - Table `cotisation`, type `statut_cotisation`, colonne `paiement.cotisation_id` supprimés
+     - Index et politiques associés supprimés
+
+  Vérifications des 7 points (ÉTAPE 12) :
+  | # | Point | Statut | Constat |
+  |---|-------|--------|---------|
+  | 1 | Récupération des cotisations | ✅ CONFORME (N/A) | Aucune cotisation dans le périmètre mobile (retirée Étape 28, migration 0006) |
+  | 2 | Montants, périodes, statuts | ✅ CONFORME | `Paiement.montant` du serveur, `statut` géré ; pas de « période » (cotisations supprimées) |
+  | 3 | Historique des paiements | ⚠️ ABSENT | Aucune fonction `listerPaiements` dans le contrat, aucun écran d'historique — documenté comme point en attente |
+  | 4 | Références de transaction | ✅ CONFORME | `reference_interne` + `reference_externe` sur `Paiement`, affichés dans `paiement-membre.tsx` |
+  | 5 | Relations membre/paiement | ✅ CONFORME | `membre_id`, `oeuvre_id`, `demande_adhesion_id` sur `Paiement` |
+  | 6 | Erreurs et données absentes | ✅ CONFORME | `ErrorState` + « Réessayer » sur tous les écrans |
+  | 7 | Pas de succès non confirmé | ✅ CONFORME | Seul `REUSSI` affiché en vert, confirmation serveur requise |
+
+  Contraintes respectées :
+  - Aucun montant inventé (tous les montants viennent du service)
+  - Aucune intégration réelle de paiement (connecteur MVola non intégré)
+  - Aucun succès affiché sans confirmation serveur
+  - Aucun nouveau champ de base de données (contrainte ÉTAPE 00)
+  - Aucune donnée existante modifiée
+
+  Point en attente :
+  - Pas de fonction d'historique des paiements côté membre (`listerPaiements` manquant) — à traiter aux étapes suivantes si le périmètre est rétabli
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie, aucun code modifié).
+
 - ÉTAPE 10 — PROFIL DU MEMBRE (aucun fichier code modifié — aucune modification possible sans ajout de champ en base, contrainte ÉTAPE 00 respectée) :
   1. `app/(membre)/(tabs)/profil.tsx` — lecture uniquement, aucune modification :
      - Section "Informations modifiables" : téléphone uniquement (champ `telephone` via `mettreAJourProfil`)
