@@ -78,7 +78,7 @@ Toutes les erreurs (4xx/5xx) renvoient le même enveloppe :
 | `DEMANDE_INTROUVABLE` | 404 | « Nous ne trouvons aucune demande avec ces informations. » | suivi / paiement |
 | `CODE_SUIVI_INVALIDE` | 401 | « Le code de suivi ne correspond pas à ce numéro de dossier. » | suivi / paiement |
 | `DEMANDE_NON_VALIDEE` | 409 | « Votre demande n'est pas encore validée : le paiement n'est pas disponible. » | options paiement / initiation |
-| `DOSSIER_INCOMPLET` | 422 | « Votre dossier est incomplet : 2 œuvres et 1 attestation par œuvre sont exigées. » | envoi de demande |
+| `DOSSIER_INCOMPLET` | 422 | « Votre dossier est incomplet : chaque œuvre doit être accompagnée de sa fiche de déclaration, et d'une attestation de diffusion selon votre situation (cas A/B/C de la règle 3). » | envoi de demande |
 | `AGE_INSUFFISANT` | 422 | « Une demande d'adhésion est possible à partir de 15 ans. » | création / envoi |
 | `AUTORISATION_PARENTALE_REQUISE` | 422 | « Une autorisation parentale est exigée pour les personnes de 15 à 17 ans. » | envoi |
 | `OPERATEUR_INDISPONIBLE` | 409 | « Cet opérateur Mobile Money est momentanément indisponible. » | initiation paiement |
@@ -118,6 +118,7 @@ Ce qui n'est **jamais** renvoyé :
   "identite": {
     "nom": "RAKOTO",
     "prenom": "Jean",
+    "pseudonyme": "Rakoto Chanteur",
     "date_naissance": "1996-04-12",
     "cin": "101234567890",
     "telephone": "+261341234567",
@@ -140,7 +141,7 @@ Ce qui n'est **jamais** renvoyé :
 }
 ```
 
-Règles : `AGE_INSUFFISANT` si moins de 15 ans ; `code_suivi` renvoyé **en clair
+Règles : `pseudonyme` obligatoire (règle métier 1) ; `AGE_INSUFFISANT` si moins de 15 ans ; `code_suivi` renvoyé **en clair
 une seule fois** ; l'app le conserve (stockage local) et l'affiche à l'écran L.
 
 ### 5.2 Mettre à jour un brouillon
@@ -174,6 +175,8 @@ une seule fois** ; l'app le conserve (stockage local) et l'affiche à l'écran L
 | `type` | facultatif, pour `pieces` : `PHOTO` \| `CIN` \| `ACTE_NAISSANCE` \| `CERTIFICAT_RESIDENCE` \| `AUTORISATION_PARENTALE` \| `AUTRE` |
 | `oeuvre_id` | facultatif (rattachement à une œuvre) |
 
+> **Distinction des documents (règle métier 4)** : le endpoint `/v1/fichiers` transporte des fichiers binaires. La **fiche de déclaration d'œuvre** et l'**attestation de diffusion** sont deux documents distincts, chacun avec son propre `chemin_stockage` dans le bucket `oeuvres`. Ils ne doivent jamais être confondus ni fusionnés dans un même fichier.
+
 MIME autorisés par bucket (identiques au schéma) :
 `pieces` → `image/jpeg`, `image/png`, `application/pdf` ;
 `oeuvres` → + `audio/mpeg`, `audio/wav`.
@@ -203,11 +206,16 @@ Progression : le client peut suivre l'octet-count du `multipart` (implémentatio
   ],
   "oeuvres": [
     { "titre": "La varangue", "categorie_id": "...", "annee": 2024,
+      "fiche_declaration": { "chemin_stockage": "oeuvres/.../fiche-varangue.pdf", "mime_type": "application/pdf", "taille_octets": 450000 },
       "fichier": { "chemin_stockage": "oeuvres/.../varangue.pdf", "mime_type": "application/pdf", "taille_octets": 1204332 },
-      "attestations": [ { "chemin_stockage": "oeuvres/.../attestation-varangue.pdf", "mime_type": "application/pdf", "taille_octets": 330211 } ] }
+      "attestations": [ { "chemin_stockage": "oeuvres/.../attestation-varangue.pdf", "mime_type": "application/pdf", "taille_octets": 330211 } ]
+    }
   ]
 }
 ```
+
+> **Fiche de déclaration (règle métier 2)** : chaque œuvre doit obligatoirement être accompagnée de sa fiche de déclaration (`fiche_declaration`), dont le modèle dépend de la catégorie de l'œuvre.
+> **Attestation de diffusion (règle métier 3)** : le tableau `attestations` est **obligatoire** pour chaque œuvre dans les cas A (adhésion d'un non-membre) et B (catégorie supplémentaire d'un membre). Il est **non obligatoire** dans le cas C (dépôt dans une catégorie déjà détenue par le membre). L'absence d'attestation dans le cas C ne doit pas bloquer l'envoi.
 
 `200 OK`
 
@@ -222,9 +230,10 @@ Progression : le client peut suivre l'octet-count du `multipart` (implémentatio
 ```
 
 Règles serveur et transaction SQL (`supabase/migrations/0009_soumission_demande_atomique.sql`) :
-photo + CIN, ≥ **2 œuvres**, **1 attestation par œuvre** (`DOSSIER_INCOMPLET`),
-`AUTORISATION_PARENTALE_REQUISE` pour les 15–17 ans. Les pièces, œuvres,
-attestations et le passage à `ENVOYEE` sont enregistrés dans une seule transaction.
+photo + CIN, ≥ **2 œuvres**, **fiche de déclaration obligatoire par œuvre** (règle métier 2),
+attestation de diffusion selon le cas A/B/C de la règle métier 3 (obligatoire en cas A et B, non obligatoire en cas C),
+`AUTORISATION_PARENTALE_REQUISE` pour les 15–17 ans.
+Les pièces, œuvres, fiches de déclaration, attestations et le passage à `ENVOYEE` sont enregistrés dans une seule transaction.
 La clé d'idempotence est conservée côté base. **Aucun paiement** n'est déclenché ni
 demandé à ce stade (règle métier 1). La migration doit être appliquée sur Supabase
 avant d'activer ce endpoint en production.
@@ -446,6 +455,46 @@ liste ; l'UI ne codifie aucun montant, opérateur ou tarif (règle AI_RULES).
    `≥ 18` rien — validé côté serveur (§5.1/§5.4), pas seulement dans l'UI.
 9. Le code de suivi n'est révélé qu'à la création/envoi ; jamais dans les
    réponses ultérieures (seul `X-Code-Suivi` en en-tête le prouve).
+10. **Pseudonyme obligatoire** (`pseudonyme`) dans `identite` à la création d'une
+    demande d'adhésion, distinct du `nom` et du `prenom` (règle métier 1).
+11. **Fiche de déclaration obligatoire par œuvre** : chaque œuvre doit être
+    accompagnée de sa `fiche_declaration`, dont le modèle dépend de la catégorie
+    de l'œuvre (règle métier 2).
+12. **Attestation de diffusion conditionnelle** (règle métier 3) : pour chaque
+    œuvre, l'attestation est obligatoire dans le cas A (adhésion d'un non-membre)
+    et le cas B (catégorie supplémentaire d'un membre), mais **non obligatoire**
+    dans le cas C (dépôt dans une catégorie déjà détenue par le membre).
+13. **Distinction des documents** (règle métier 4) : fiche de déclaration,
+    attestation de diffusion et autres pièces administratives sont des documents
+    séparés, identifiés individuellement dans l'API, le stockage et les réponses
+    serveur.
+14. **Lien œuvre ↔ catégorie ↔ fiche ↔ attestation** : chaque œuvre référence
+    exactement une `categorie_id` ; sa fiche de déclaration doit correspondre à
+    cette catégorie ; l'attestation (quand requise) est liée à cette même œuvre.
+
+### 8.1 Validations serveur attendues
+
+Le serveur doit vérifier, pour chaque envoi de demande :
+
+- `pseudonyme` présent et non vide dans `identite` (adhésion) ;
+- chaque œuvre possède une `fiche_declaration` valide (fichier présent, MIME autorisé, taille ≤ 20 Mo) ;
+- si le cas est A ou B : chaque œuvre possède au moins une attestation de diffusion ;
+- si le cas est C : l'absence d'attestation ne bloque pas l'envoi ;
+- le modèle de fiche de déclaration correspond à la `categorie_id` de l'œuvre ;
+- chaque `chemin_stockage` désigne un objet réellement présent dans le bucket privé correspondant (`pieces` ou `oeuvres`) ;
+- au moins 2 œuvres dans le dossier ;
+- photo + CIN présentes dans les pièces ;
+- âge ≥ 15 ans, autorisation parentale pour les 15–17 ans.
+
+### 8.2 Formulaires officiels de l'OMDA (point en attente)
+
+Conformément à la règle métier 5, aucun formulaire officiel de déclaration d'œuvre n'a été localisé dans le projet à ce jour. Les points suivants doivent être confirmés par l'OMDA avant tout développement fonctionnel des fiches :
+
+- les modèles de fiche par catégorie et leurs champs réels ;
+- si la fiche est remplie directement dans l'application ou déposée sous forme de fichier ;
+- si le modèle de fiche est stocké côté serveur ou côté client.
+
+Aucun champ ni aucun formulaire fictif ne doit être créé en attendant ces précisions. Les informations manquantes sont consignées dans `docs/PROGRESS.md`.
 
 ## 9) Branchement et environnement
 

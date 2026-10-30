@@ -25,7 +25,7 @@ import {
   type TypeMime,
 } from '../../src/models';
 import type { ErreurApp, FichierDepose } from '../../src/services/contracts';
-import { candidateApi, memberRepository, publicContentService } from '../../src/services/factory';
+import { memberRepository, publicContentService } from '../../src/services/factory';
 import {
   AIDE_ATTESTATION_FORMATS,
   MESSAGE_ATTESTATION_FORMAT_INVALIDE,
@@ -261,7 +261,7 @@ function oeuvreVide(): OeuvreEnCours {
  * progression visible, reprise sur erreur (coupure réseau), remplacement et
  * suppression (confirmée par `UploadTile`) d'un fichier, retrait d'une ligne
  * d'œuvre confirmé DANS l'écran (aucun `Alert`). Les envois passent par
- * `candidateApi.televerserFichier` (contrat unique, via la fabrique).
+ * `memberRepository.televerserFichier` (Supabase Storage, dossier du membre).
  *
  * Paramètres d'entrée : `categorie_id` (obligatoire) + `categorie_libelle`.
  * Revalide la catégorie au chargement (catégorie retirée du référentiel ou
@@ -438,7 +438,7 @@ export default function DemanderCategorieOeuvresScreen() {
         erreur: null,
       });
 
-      const resultat = await candidateApi.televerserFichier(
+      const resultat = await memberRepository.televerserFichier(
         {
           bucket: BUCKET_OEUVRES,
           chemin_stockage: cheminStockage(cible.nature, selection.nom),

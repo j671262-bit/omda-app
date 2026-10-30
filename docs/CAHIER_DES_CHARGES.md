@@ -169,7 +169,7 @@ Le mobile doit consommer une API REST (à brancher plus tard) pour :
    - < 15 : refus bloquant
    - 15–17 : autorisation parentale obligatoire
    - ≥ 18 : pas d’autorisation
-8. Adhésion : au moins 2 œuvres + 1 attestation par œuvre
+8. Adhésion : au moins 2 œuvres + fiche de déclaration obligatoire par œuvre ; attestation de diffusion obligatoire par œuvre uniquement dans les cas A (adhésion non-membre) et B (catégorie supplémentaire), non obligatoire dans le cas C (dépôt dans catégorie déjà détenue) — voir règle métier 3 de `docs/AI_RULES.md` (remplace l'ancienne règle "1 attestation par œuvre" systématique).
 9. Catégorie supplémentaire possible via `membre_categorie`
 10. Première connexion : changement mot de passe obligatoire si `doit_changer_mot_de_passe=true`
 11. Délai affiché informatif : 72h
