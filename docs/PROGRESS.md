@@ -1,3 +1,37 @@
+- ÉTAPE 10 — PROFIL DU MEMBRE (aucun fichier code modifié — aucune modification possible sans ajout de champ en base, contrainte ÉTAPE 00 respectée) :
+  1. `app/(membre)/(tabs)/profil.tsx` — lecture uniquement, aucune modification :
+     - Section "Informations modifiables" : téléphone uniquement (champ `telephone` via `mettreAJourProfil`)
+     - Section "Informations en lecture seule" : e-mail, numéro d'adhérent, rôle, date d'adhésion, dernière connexion, statut du compte
+     - Section "Mes catégories" : toutes les catégories avec statut et actions d'annulation
+     - États Loading / Erreur + "Réessayer" / Vide / Contenu : tous présents et fonctionnels
+     - Gestion des erreurs réseau et serveur : présente avec `ErrorState` + « Réessayer »
+  2. `src/services/contracts/memberRepository.ts` — lecture uniquement :
+     - `obtenirProfil()` : retourne `ProfilMembre` (`utilisateur` + `membre` + `categories`)
+     - `mettreAJourProfil(entree: MiseAJourProfilEntree)` : `entree` ne contient que `telephone?: string | null`
+  3. `src/models/identites.ts` — lecture uniquement :
+     - `Utilisateur` : aucun champ `nom`, `prenom`, `pseudonyme`
+     - `Candidat` : `nom`, `prenom` mais aucun champ `pseudonyme`
+     - `Membre` : aucun champ `nom`, `prenom`, `pseudonyme`
+
+  Règle métier 1 (pseudonyme) — BLOCAGE identifié :
+  - Le pseudonyme saisi à l'adhésion (via `IdentiteCandidatEntree.pseudonyme`, ajouté étape 08) n'est PAS stocké dans le modèle `Candidat` ni dans `Membre`
+  - Le profil membre n'affiche PAS le pseudonyme, ni le nom, ni le prénom
+  - Impossible d'afficher le pseudonyme sans ajout de champ en base (interdit par la contrainte ÉTAPE 00)
+  - Le commentaire du fichier `profil.tsx` (ligne 153-155) indique que "le nom, le prénom, le CIN et la date de naissance viennent du dossier candidat et restent en lecture seule" mais ils ne sont PAS affichés à l'écran
+
+  Règles métier vérifiées :
+  - Règle 1 : pseudonyme non stocké, non affiché — BLOQUAGE (champ manquant en base de données)
+  - Règle 2-5 : non impactées par l'écran profil (pas de gestion d'œuvres/de documents ici)
+
+  Contraintes respectées :
+  - Aucun nouveau champ de base de données créé (contrainte ÉTAPE 00)
+  - Aucune nouvelle propriété inventée (contrainte ÉTAPE 10)
+  - Aucun nom officiel modifié à la place du pseudonyme
+  - Aucune donnée personnelle modifiée sans autorisation métier
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie, aucun code modifié).
+
+- ÉTAPE 09 — AUTHENTIFICATION ET GESTION DES SESSIONS MEMBRES (fichiers modifiés : `src/services/supabase/SupabaseAuthService.ts`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN nouveau champ de base de données, AUCUN formulaire fictif créé, aucun compte candidat créé) :
 - ÉTAPE 09 — AUTHENTIFICATION ET GESTION DES SESSIONS MEMBRES (fichiers modifiés : `src/services/supabase/SupabaseAuthService.ts`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN nouveau champ de base de données, AUCUN formulaire fictif créé, aucun compte candidat créé) :
   1. `src/services/supabase/SupabaseAuthService.ts` :
      - `utilisateurDepuisSupabase` lit désormais le rôle depuis `user_metadata.role` avec repli sur `'MEMBRE'` (compatibilité comptes existants) au lieu de le forcer en dur à `'MEMBRE'`.
