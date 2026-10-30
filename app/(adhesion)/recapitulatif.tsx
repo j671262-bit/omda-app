@@ -343,6 +343,7 @@ export default function RecapitulatifScreen() {
           identite: {
             nom: brouillon.identite.nom.trim(),
             prenom: brouillon.identite.prenom.trim(),
+            pseudonyme: brouillon.identite.pseudonyme.trim(),
             date_naissance: brouillon.identite.date_naissance,
             cin: brouillon.identite.cin.trim(),
             telephone: brouillon.identite.telephone.trim(),

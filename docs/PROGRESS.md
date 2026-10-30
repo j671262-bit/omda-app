@@ -1,3 +1,46 @@
+- ÉTAPE 02 — GESTION DU CYCLE DE VIE DES DEMANDES CANDIDATS (fichiers modifiés : `src/context/AdhesionDraftContext.tsx`, `src/services/contracts/candidateApi.ts`, `app/(adhesion)/identite.tsx`, `app/(adhesion)/categorie.tsx`, `app/(adhesion)/documents-oeuvres.tsx`, `app/(adhesion)/recapitulatif.tsx`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN compte Supabase Auth créé pour un candidat) :
+  1. `src/context/AdhesionDraftContext.tsx` :
+     - Ajout de `pseudonyme: string` à `IdentiteDraft` (Règle métier 1 : distinct du nom/prénom, obligatoire).
+     - Ajout de `demande_id: UUID | null` à `AdhesionDraft` (identifiant interne de la demande côté serveur, nécessaire pour les mises à jour PATCH et la reprise).
+     - Mise à jour de `IDENTITE_VIDE` et `BROUILLON_INITIAL` avec les nouveaux champs.
+     - Mise à jour de `identiteEstValide` : vérifie que `pseudonyme` est non vide.
+     - `definirIdentifiantsDossier` accepte désormais un troisième paramètre optionnel `demandeId` pour stocker l'identifiant interne.
+  2. `src/services/contracts/candidateApi.ts` :
+     - Ajout de `pseudonyme: string` à `IdentiteCandidatEntree` avec documentation Règle métier 1.
+  3. `app/(adhesion)/identite.tsx` :
+     - Ajout du champ « Pseudonyme / nom d'artiste » (obligatoire, aide « Distinct de votre nom et prénom officiels »).
+     - Ajout de `validerPseudonyme` et `erreurPseudonyme`.
+     - Le pseudonyme est transmis via `mettreAJourIdentite({ pseudonyme: val.trim() })`.
+  4. `app/(adhesion)/categorie.tsx` :
+     - Création du brouillon côté serveur (`POST /v1/demandes` via `creerDemande`) AVANT tout upload, dès que l'identité est valide et une catégorie est sélectionnée.
+     - Stockage de `demande_id`, `numero_dossier`, `code_suivi` via `definirIdentifiantsDossier`.
+     - Si le brouillon existe déjà, mise à jour via `PATCH /v1/demandes/{numero}` (`mettreAJourDemande`) avec en-têtes `X-Numero-Dossier` + `X-Code-Suivi`.
+     - Vérification de `identiteEstValide` (incluant `pseudonyme`) avant de continuer.
+     - Gestion des erreurs avec `ErrorState` + message affichable.
+  5. `app/(adhesion)/documents-oeuvres.tsx` :
+     - `creerDemande` (fallback) inclut désormais `pseudonyme`.
+     - `mettreAJourDemande` (reprise après redémarrage) inclut désormais `pseudonyme`.
+  6. `app/(adhesion)/recapitulatif.tsx` :
+     - `creerDemande` (fallback) inclut désormais `pseudonyme`.
+  7. `docs/PROGRESS.md` — cette entrée.
+
+  Règles métier appliquées :
+  - Règle 1 : `pseudonyme` obligatoire à l'adhésion, distinct du nom/prénom, validé, sauvegardé, envoyé à l'API.
+  - Règle 0 : l'ordre création brouillon (POST) avant upload est respecté ; `PATCH` pour mise à jour ; `X-Code-Suivi` envoyé sur les requêtes nécessitant l'authentification candidat.
+
+  Problèmes résolus par cette étape :
+  1. `pseudonyme` ajouté à `IdentiteDraft`, `IdentiteCandidatEntree`, `identite.tsx`, `creerDemande` (categorie, documents-oeuvres, recapitulatif).
+  2. `demande_id` conservé dans `AdhesionDraft` pour permettre la reprise et les mises à jour PATCH.
+  3. Brouillon créé côté serveur avant le premier upload (respect de l'ordre imposé).
+  4. `PATCH /v1/demandes/{numero}` utilisé quand le brouillon existe déjà.
+  5. Reprise sans perte : `demande_id`, `numero_dossier`, `code_suivi` restaurés depuis AsyncStorage/SecureStore.
+
+  Problèmes encore en attente (seront traités aux étapes suivantes) :
+  - `fiche_declaration` absente de `OeuvreAdhesionEntree` (Règle 2) — formulaires officiels encore manquants (voir §8.2 de API_CANDIDAT.md).
+  - Attestation rendue systématiquement obligatoire dans `documents-oeuvres.tsx` et `recapitulatif.tsx` (Règle 3) — pour le parcours candidat (cas A), l'attestation reste obligatoire ; la conditionnalité cas B/C concerne l'espace membre.
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie).
+
 - ÉTAPE 01 — AUDIT DU PARCOURS CANDIDAT (aucun code modifié) :
   Parcours audité : Identité → Catégorie → Documents et œuvres → Récapitulatif → Envoi → Confirmation → Suivi.
   Écrans examinés : `app/(adhesion)/identite.tsx`, `app/(adhesion)/categorie.tsx`, `app/(adhesion)/documents-oeuvres.tsx`, `app/(adhesion)/recapitulatif.tsx`, `app/(adhesion)/confirmation.tsx`, `app/(adhesion)/refus-age.tsx`, `app/(candidat)/suivi.tsx`, `app/(candidat)/paiement.tsx`, `app/(candidat)/succes-adhesion.tsx`.

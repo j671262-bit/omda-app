@@ -72,6 +72,8 @@ async function persisterBrouillon(brouillon: AdhesionDraft): Promise<void> {
 export type IdentiteDraft = {
   nom: string;
   prenom: string;
+  /** Pseudonyme ou nom d'artiste — distinct du nom et du prénom officiels (Règle métier 1). */
+  pseudonyme: string;
   date_naissance: DateISO | '';
   cin: string;
   telephone: string;
@@ -85,6 +87,8 @@ export type IdentiteDraft = {
 export type AdhesionDraft = {
   identite: IdentiteDraft;
   categorie_id: UUID | null;
+  /** Identifiant interne de la demande côté serveur (retourné par `creerDemande`). Nécessaire pour les mises à jour PATCH ultérieures. */
+  demande_id: UUID | null;
   pieces: PieceEntree[];
   oeuvres: OeuvreAdhesionEntree[];
   numero_dossier: string | null;
@@ -95,6 +99,7 @@ export type AdhesionDraft = {
 export const IDENTITE_VIDE: IdentiteDraft = {
   nom: '',
   prenom: '',
+  pseudonyme: '',
   date_naissance: '',
   cin: '',
   telephone: '+261',
@@ -105,6 +110,7 @@ export const IDENTITE_VIDE: IdentiteDraft = {
 export const BROUILLON_INITIAL: AdhesionDraft = {
   identite: IDENTITE_VIDE,
   categorie_id: null,
+  demande_id: null,
   pieces: [],
   oeuvres: [],
   numero_dossier: null,
@@ -141,7 +147,7 @@ export type AdhesionDraftContextType = {
   definirCategorie: (categorieId: UUID) => Promise<void>;
   mettreAJourPieces: (pieces: PieceEntree[]) => Promise<void>;
   mettreAJourOeuvres: (oeuvres: OeuvreAdhesionEntree[]) => Promise<void>;
-  definirIdentifiantsDossier: (numeroDossier: string, codeSuivi: string) => Promise<void>;
+  definirIdentifiantsDossier: (numeroDossier: string, codeSuivi: string, demandeId?: UUID | null) => Promise<void>;
   reinitialiserBrouillon: () => Promise<void>;
   age: number | null;
   estMineur15A17: boolean;
@@ -229,11 +235,12 @@ export function AdhesionDraftProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const definirIdentifiantsDossier = useCallback(async (numeroDossier: string, codeSuivi: string) => {
+  const definirIdentifiantsDossier = useCallback(async (numeroDossier: string, codeSuivi: string, demandeId?: UUID | null) => {
     setBrouillon((precedent) => ({
       ...precedent,
       numero_dossier: numeroDossier,
       code_suivi: codeSuivi,
+      demande_id: demandeId ?? precedent.demande_id,
       derniere_mise_a_jour: new Date().toISOString(),
     }));
   }, []);
@@ -256,6 +263,7 @@ export function AdhesionDraftProvider({ children }: { children: ReactNode }) {
   const identiteEstValide = useMemo(() => {
     const i = brouillon.identite;
     if (!i.nom.trim() || !i.prenom.trim()) return false;
+    if (!i.pseudonyme.trim()) return false;
     if (!i.cin.trim() || !/^\d{12}$/.test(i.cin.trim())) return false;
     if (!i.telephone.trim() || !i.telephone.startsWith('+261') || i.telephone.length < 13) return false;
     if (!i.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(i.email.trim())) return false;

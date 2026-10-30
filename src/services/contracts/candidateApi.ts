@@ -35,6 +35,8 @@ import type {
 export type IdentiteCandidatEntree = {
   nom: string;
   prenom: string;
+  /** Pseudonyme ou nom d'artiste — distinct du nom et du prénom officiels (Règle métier 1). Obligatoire. */
+  pseudonyme: string;
   /** Format `AAAA-MM-JJ` ; le serveur refuse les moins de 15 ans. */
   date_naissance: DateISO;
   cin: string;

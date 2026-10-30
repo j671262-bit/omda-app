@@ -17,6 +17,7 @@ import { useAdhesionDraft } from '../../src/context/AdhesionDraftContext';
  * Sans menu (navigation linéaire).
  * Champs :
  * - Nom, Prénom
+ * - Pseudonyme / nom d'artiste (distinct du nom et du prénom, obligatoire — Règle métier 1)
  * - Date de naissance (format AAAA-MM-JJ) : calcul de l'âge
  *   - Si < 15 ans : redirection bloquante vers l'écran `refus-age`
  *   - Si 15–17 ans : InfoBanner indiquant l'autorisation parentale obligatoire
@@ -41,6 +42,8 @@ export default function IdentiteScreen() {
 
   const validerNom = (val: string) => (!val.trim() ? 'Le nom est obligatoire.' : undefined);
   const validerPrenom = (val: string) => (!val.trim() ? 'Le prénom est obligatoire.' : undefined);
+  const validerPseudonyme = (val: string) =>
+    !val.trim() ? "Le pseudonyme (ou nom d'artiste) est obligatoire." : undefined;
   const validerDate = (val: string) => {
     if (!val.trim()) return 'La date de naissance est obligatoire.';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
@@ -87,6 +90,7 @@ export default function IdentiteScreen() {
 
   const erreurNom = tentativeSoumission ? validerNom(identite.nom) : undefined;
   const erreurPrenom = tentativeSoumission ? validerPrenom(identite.prenom) : undefined;
+  const erreurPseudonyme = tentativeSoumission ? validerPseudonyme(identite.pseudonyme) : undefined;
   const erreurDate = tentativeSoumission ? validerDate(identite.date_naissance) : undefined;
   const erreurCin = tentativeSoumission ? validerCin(identite.cin) : undefined;
   const erreurTelephone = tentativeSoumission ? validerTelephone(identite.telephone) : undefined;
@@ -163,6 +167,16 @@ export default function IdentiteScreen() {
           obligatoire
           erreur={erreurPrenom}
           onChangeValeur={(val) => void mettreAJourIdentite({ prenom: val })}
+        />
+
+        <TextField
+          libelle="Pseudonyme / nom d'artiste"
+          valeur={identite.pseudonyme}
+          placeholder="Rakoto Chanteur"
+          aide="Distinct de votre nom et prénom officiels"
+          obligatoire
+          erreur={erreurPseudonyme}
+          onChangeValeur={(val) => void mettreAJourIdentite({ pseudonyme: val.trim() })}
         />
 
         <TextField

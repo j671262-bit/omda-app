@@ -13,7 +13,7 @@ import {
 } from '../../src/components/ui';
 import { useAdhesionDraft } from '../../src/context/AdhesionDraftContext';
 import type { Categorie } from '../../src/models';
-import { publicContentService } from '../../src/services/factory';
+import { candidateApi, publicContentService } from '../../src/services/factory';
 
 type EtatChargement = 'chargement' | 'erreur' | 'vide' | 'contenu';
 
@@ -31,7 +31,7 @@ type EtatChargement = 'chargement' | 'erreur' | 'vide' | 'contenu';
  * Sauvegarde continue dans le store persistant `AdhesionDraft`.
  */
 export default function CategorieScreen() {
-  const { brouillon, definirCategorie } = useAdhesionDraft();
+  const { brouillon, definirCategorie, definirIdentifiantsDossier, identiteEstValide } = useAdhesionDraft();
 
   const [etat, setEtat] = useState<EtatChargement>('chargement');
   const [categories, setCategories] = useState<Categorie[]>([]);
@@ -70,13 +70,65 @@ export default function CategorieScreen() {
     void chargerCategories();
   }, [chargerCategories]);
 
-  const continuer = useCallback(() => {
+  const continuer = useCallback(async () => {
     setTentativeValidation(true);
+    setMessageErreur('');
     if (!categorieSelectionnee) {
       return;
     }
-    router.push('/(adhesion)/documents-oeuvres');
-  }, [categorieSelectionnee]);
+    if (!identiteEstValide) {
+      setMessageErreur('Veuillez compléter votre identité (y compris le pseudonyme) avant de continuer.');
+      return;
+    }
+
+    const identite = brouillon.identite;
+    const demandeEntree = {
+      identite: {
+        nom: identite.nom.trim(),
+        prenom: identite.prenom.trim(),
+        pseudonyme: identite.pseudonyme.trim(),
+        date_naissance: identite.date_naissance,
+        cin: identite.cin.trim(),
+        telephone: identite.telephone.trim(),
+        email: identite.email.trim(),
+        adresse: identite.adresse.trim(),
+      },
+      categorie_id: categorieSelectionnee,
+    };
+
+    try {
+      if (!brouillon.numero_dossier || !brouillon.code_suivi) {
+        // Créer le brouillon côté serveur AVANT tout upload (POST /v1/demandes).
+        const creation = await candidateApi.creerDemande(demandeEntree);
+        if (!creation.ok) {
+          setMessageErreur(creation.erreur.message || 'Impossible de créer le brouillon de demande.');
+          setEtat('erreur');
+          return;
+        }
+        await definirIdentifiantsDossier(
+          creation.valeur.numero_dossier,
+          creation.valeur.code_suivi,
+          creation.valeur.demande_id,
+        );
+      } else {
+        // Brouillon serveur déjà créé : mise à jour (PATCH /v1/demandes/{numero}).
+        const miseAJour = await candidateApi.mettreAJourDemande(
+          brouillon.numero_dossier,
+          brouillon.code_suivi,
+          { identite: demandeEntree.identite, categorie_id: categorieSelectionnee },
+        );
+        if (!miseAJour.ok) {
+          setMessageErreur(miseAJour.erreur.message || 'Impossible de mettre à jour le brouillon.');
+          setEtat('erreur');
+          return;
+        }
+      }
+      router.push('/(adhesion)/documents-oeuvres');
+    } catch {
+      setMessageErreur('Une erreur est survenue. Veuillez réessayer.');
+      setEtat('erreur');
+    }
+  }, [brouillon, categorieSelectionnee, identiteEstValide, definirIdentifiantsDossier, candidateApi]);
 
   if (etat === 'chargement') {
     return (

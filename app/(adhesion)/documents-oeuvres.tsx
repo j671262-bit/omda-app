@@ -603,6 +603,7 @@ export default function DocumentsOeuvresScreen() {
           identite: {
             nom: identite.nom.trim(),
             prenom: identite.prenom.trim(),
+            pseudonyme: identite.pseudonyme.trim(),
             date_naissance: identite.date_naissance,
             cin: identite.cin.trim(),
             telephone: identite.telephone.trim(),
@@ -624,6 +625,7 @@ export default function DocumentsOeuvresScreen() {
           identite: {
             nom: brouillon.identite.nom.trim(),
             prenom: brouillon.identite.prenom.trim(),
+            pseudonyme: brouillon.identite.pseudonyme.trim(),
             date_naissance: brouillon.identite.date_naissance || undefined,
             cin: brouillon.identite.cin.trim(),
             telephone: brouillon.identite.telephone.trim(),
