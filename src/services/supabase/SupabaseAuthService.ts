@@ -154,11 +154,17 @@ function utilisateurDepuisSupabase(user: User): Utilisateur {
   const doitChanger = drapeauChangement(user);
   const cree = user.created_at ?? new Date().toISOString();
 
+  // Le rôle est lu depuis les métadonnées de session Supabase. Seuls les
+  // comptes `role = 'MEMBRE'` utilisent l'application mobile (les agents et
+  // administrateurs travaillent hors mobile). Le repli sur 'MEMBRE' conserve
+  // la compatibilité avec les comptes créés avant ce contrôle.
+  const role = typeof metadonnees.role === 'string' ? metadonnees.role : 'MEMBRE';
+
   return {
     id: user.id,
     email: user.email ?? '',
     telephone,
-    role: 'MEMBRE',
+    role: role as 'MEMBRE' | 'AGENT' | 'ADMINISTRATEUR',
     statut: doitChanger ? 'EN_ATTENTE_CHANGEMENT_MDP' : 'ACTIF',
     doit_changer_mot_de_passe: doitChanger,
     derniere_connexion_at: user.last_sign_in_at ?? null,
@@ -226,7 +232,14 @@ export class SupabaseAuthService implements AuthService {
         });
       }
       await chargerDrapeauChangement(data.user);
-      return ok(sessionDepuisSupabase(data.user, data.session));
+      const session = sessionDepuisSupabase(data.user, data.session);
+      if (session.utilisateur.role !== 'MEMBRE') {
+        return erreurMetier(
+          CODES_ERREUR_AUTH.COMPTE_DESACTIVE,
+          'Ce compte n’est pas autorisé à accéder à l’application mobile OMDA.',
+        );
+      }
+      return ok(session);
     } catch (cause) {
       return erreurReseau(texteDe(cause));
     }
@@ -263,7 +276,14 @@ export class SupabaseAuthService implements AuthService {
         return ok(null);
       }
       await chargerDrapeauChangement(data.session.user);
-      return ok(sessionDepuisSupabase(data.session.user, data.session));
+      const session = sessionDepuisSupabase(data.session.user, data.session);
+      if (session.utilisateur.role !== 'MEMBRE') {
+        return erreurMetier(
+          CODES_ERREUR_AUTH.COMPTE_DESACTIVE,
+          'Ce compte n’est pas autorisé à accéder à l’application mobile OMDA.',
+        );
+      }
+      return ok(session);
     } catch (cause) {
       return erreurReseau(texteDe(cause));
     }

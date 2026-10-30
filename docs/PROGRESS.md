@@ -1,3 +1,28 @@
+- ÉTAPE 09 — AUTHENTIFICATION ET GESTION DES SESSIONS MEMBRES (fichiers modifiés : `src/services/supabase/SupabaseAuthService.ts`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN nouveau champ de base de données, AUCUN formulaire fictif créé, aucun compte candidat créé) :
+  1. `src/services/supabase/SupabaseAuthService.ts` :
+     - `utilisateurDepuisSupabase` lit désormais le rôle depuis `user_metadata.role` avec repli sur `'MEMBRE'` (compatibilité comptes existants) au lieu de le forcer en dur à `'MEMBRE'`.
+     - `connecter` refuse (`COMPTE_DESACTIVE`) tout utilisateur dont le rôle n'est pas `MEMBRE` : un compte AGENT ou ADMINISTRATEUR ne peut plus accéder à l'application mobile (contrat `authService.ts` : seuls les comptes MEMBRE utilisent l'application mobile).
+     - `obtenirSession` refuse de même (`COMPTE_DESACTIVE`) tout utilisateur dont le rôle n'est pas `MEMBRE` lors de la restauration de session.
+     - Ces contrôles empêchent un candidat (non membre) ou un agent/administrateur d'utiliser Supabase Auth pour accéder à l'espace membre de l'application mobile.
+
+  Règles de sécurité appliquées :
+  - Aucun compte candidat n'est créé.
+  - Aucun contrôle serveur n'est contourné.
+  - Aucun privilège supplémentaire n'est donné à un utilisateur.
+  - Le rôle MEMBRE est vérifié côté serveur (Supabase Auth) à chaque connexion et restauration de session.
+
+  État des 8 points de vérification (ÉTAPE 09) :
+  | # | Point | Statut | Constat |
+  |---|-------|--------|---------|
+  | 1 | Connexion / déconnexion | ✅ CONFORME | `connecter` vérifie le rôle MEMBRE ; `deconnecter` révoque la session via `signOut` et vide le cache des drapeaux. |
+  | 2 | Restauration de session | ✅ CONFORME | `obtenirSession` vérifie le rôle MEMBRE ; `AuthContext` restaure via `ecouterSession` au démarrage. |
+  | 3 | Expiration / renouvellement tokens | ✅ CONFORME | `autoRefreshToken: true` dans le client Supabase ; `ecouterSession` propage les changements de session (expiration, déconnexion distante). |
+  | 4 | Protection des routes membres | ✅ CONFORME | `(auth-required)` redirige non connectés vers connexion ; `(membre)` redirige non connectés vers accueil public et connectés sans changement de MDP vers changement de mot de passe. |
+  | 5 | Gestion erreurs d'authentification | ✅ CONFORME | `classerErreurAuth` traduit IDENTIFIANTS_INVALIDES, COMPTE_DESACTIVE, EMAIL_NON_CONFIRME, TROP_DE_TENTATIVES, MOT_DE_PASSE_FAIBLE, MOT_DE_PASSE_IDENTIQUE, CONFIRMATION_DIFFERENTE, SESSION_EXPIREE. |
+  | 6 | Candidat ne peut pas utiliser Supabase Auth | ✅ CONFORME | Un candidat (pas de compte Supabase Auth) ne peut pas se connecter ; seul un compte MEMBRE avec rôle MEMBRE peut accéder à l'application mobile. |
+  | 7 | Rôles et permissions | ✅ CONFORME | `role` lu depuis `user_metadata.role` (repli MEMBRE) ; seuls MEMBRE passent le contrôle dans `connecter` et `obtenirSession`. |
+  | 8 | Changement obligatoire de mot de passe (Règle métier 10) | ✅ CONFORME | `doit_changer_mot_de_passe` lu depuis `utilisateur` + repli `user_metadata` ; écran bloquant `(auth-required)` si `true` ; remis à `false` en base et mémoire après changement réussi. |
+
 - ÉTAPE 08 — TESTS COMPLETS DU PARCOURS CANDIDAT (fichiers modifiés : `server/test/server.test.mjs`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN nouveau champ de base de données, AUCUN formulaire fictif créé, aucun mock utilisé dans le parcours réel) :
   1. `server/test/server.test.mjs` :
      - Test existant corrigé (ligne 53) : `pseudonyme` ajouté à l'identité pour atteindre la vérification de `trackingCodePepper` (503 `CONFIGURATION_SECURITE_INCOMPLETE`).
