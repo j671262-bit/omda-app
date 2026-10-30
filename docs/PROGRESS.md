@@ -1,3 +1,36 @@
+- ÉTAPE 01 — AUDIT DU PARCOURS CANDIDAT (aucun code modifié) :
+  Parcours audité : Identité → Catégorie → Documents et œuvres → Récapitulatif → Envoi → Confirmation → Suivi.
+  Écrans examinés : `app/(adhesion)/identite.tsx`, `app/(adhesion)/categorie.tsx`, `app/(adhesion)/documents-oeuvres.tsx`, `app/(adhesion)/recapitulatif.tsx`, `app/(adhesion)/confirmation.tsx`, `app/(adhesion)/refus-age.tsx`, `app/(candidat)/suivi.tsx`, `app/(candidat)/paiement.tsx`, `app/(candidat)/succes-adhesion.tsx`.
+  Services/contrats examinés : `src/context/AdhesionDraftContext.tsx`, `src/services/contracts/candidateApi.ts`, `src/services/http/HttpCandidateApi.ts`, `src/services/factory.ts`, `src/services/local/historiqueDossiers.ts`.
+
+  Tableau des fonctionnalités :
+  | # | Fonctionnalité | Statut | Constat principal |
+  |---|---------------|--------|-------------------|
+  | 1 | Écran Identité (nom, prénom, date_naissance, CIN, téléphone, email, adresse) | CONFORME | Champs saisis, validés, sauvegardés. Refus < 15 ans. InfoBanner 15–17 ans. |
+  | 2 | Champ `pseudonyme` (Règle 1) | NON CONFORME | Absent de `IdentiteDraft`, `IdentiteCandidatEntree`, `identite.tsx` et de l'envoi `creerDemande`. |
+  | 3 | Écran Catégorie (sélection dynamique) | CONFORME | 4 états gérés. Aucune catégorie en dur. Sélection obligatoire. |
+  | 4 | Création du brouillon avant le premier upload | INCOMPLET | Brouillon local (AsyncStorage) dès la saisie, mais `creerDemande` (serveur) appelé uniquement à l'envoi final. |
+  | 5 | Conservation numéro de dossier + code de suivi | CONFORME | AsyncStorage (brouillon) + SecureStore (code de suivi, chiffré). Affichage en clair écran L. |
+  | 6 | Téléversement pièces et œuvres | CONFORME | Contrôles MIME + 20 Mo pré-envoi, progression réelle, annulation `AbortSignal`. |
+  | 7 | Fiche de déclaration d'œuvre (Règle 2) | ABSENTE | Aucun champ `fiche_declaration` dans `OeuvreAdhesionEntree`, aucun UploadTile, aucune vérification. |
+  | 8 | Attestation de diffusion conditionnelle (Règle 3) | NON CONFORME | Rendue obligatoire pour chaque œuvre (ancienne règle 8 systématique). Aucune distinction cas A/B/C. |
+  | 9 | Distinction des documents (Règle 4) | NON CONFORME | Fiche de déclaration inexistante comme document distinct. |
+  | 10 | Écran Récapitulatif + complétude | CONFORME (partiel) | Vérifie identité, pièces, 2 œuvres min, fichier + attestation. Pas de `pseudonyme` ni `fiche_declaration`. |
+  | 11 | Envoi du dossier (`soumettreDemande`) | CONFORME (structure) | `POST /v1/demandes/{numero}/envoi` avec `Idempotency-Key`, en-têtes `X-Numero-Dossier` + `X-Code-Suivi`. Aucun paiement. |
+  | 12 | `creerDemande` avant envoi | CONFORME | Appelée si pas encore de numéro/code. Envoie identité (sans `pseudonyme`) + catégorie. |
+  | 13 | Écran Confirmation (L) — numéro + code de suivi | CONFORME | Affichage en clair, texte sélectionnable, messages obligatoires présents. Actions copier/sauvegarder/suivre. |
+  | 14 | Suivi public (`suivreDemande`) | CONFORME | `GET /v1/suivi/{numero_dossier}` avec en-têtes. Gère `REJETEE`, `VALIDEE`, `ADHESION_TERMINEE`. |
+  | 15 | Gestion erreurs / interruptions / reprises | CONFORME | `ErrorState` + « Réessayer ». Type `Result` (`reseau`/`serveur`/`metier`). Brouillon repris depuis AsyncStorage. |
+  | 16 | Fonctionnalités simulées (mocks) | IDENTIFIÉ | `MockCandidateApi` par défaut. `HttpCandidateApi` quand flag=false ET URL définie. Aucun repli silencieux. |
+
+  Problèmes prioritaires :
+  1. `pseudonyme` absent partout (Règle 1) — à ajouter dans `IdentiteDraft`, `IdentiteCandidatEntree`, `identite.tsx`, et l'envoi `creerDemande`.
+  2. `fiche_declaration` absente (Règle 2) — à ajouter dans `OeuvreAdhesionEntree`, `documents-oeuvres.tsx` (UploadTile dédié), `recapitulatif.tsx` (vérification), et `soumettreDemande`.
+  3. Attestation rendue systématiquement obligatoire (Règle 3) — à rendre conditionnelle selon cas A (adhésion) / B (catégorie supplémentaire) / C (dépôt catégorie détenue, non obligatoire).
+  4. Incohérence contrat API (`docs/API_CANDIDAT.md` déjà mis à jour) vs code TypeScript/écrans non encore modifiés.
+
+  Vérification `npx tsc --noEmit` : non exécutable dans cet environnement (dépendances Expo/React Native absentes, comme déjà signalé dans l'historique de `docs/PROGRESS.md`). Résultat : non disponible.
+
 - ÉTAPE 00 — INTÉGRATION DES NOUVELLES RÈGLES MÉTIER (fichiers modifiés : `docs/AI_RULES.md`, `docs/API_CANDIDAT.md`, `docs/CAHIER_DES_CHARGES.md`, `docs/AUDIT.md`, `docs/PROGRESS.md` — AUCUN code applicatif, AUCUNE migration SQL, AUCUNE donnée modifiée) :
   1. `docs/AI_RULES.md` — ajout de la section "Règles métier — identité, documents et œuvres" intégrant les 5 règles obligatoires et prioritaires :
      - Règle 1 : pseudonyme obligatoire à l'adhésion (distinct du nom/prénom), réutilisé pour une catégorie supplémentaire sans nouvelle saisie ;
