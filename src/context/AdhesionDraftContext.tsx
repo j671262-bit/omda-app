@@ -16,7 +16,7 @@ import type {
   PieceEntree,
 } from '../services/contracts';
 
-/** Clé de stockage local pour le brouillon d'adhésion (hors secrets). */
+/** Clé de stockage local pour le brouillon d'adhésion (données non sensibles uniquement). */
 const CLE_STORAGE_ADHESION_DRAFT = 'omda_adhesion_draft_v1';
 
 /**
@@ -24,6 +24,13 @@ const CLE_STORAGE_ADHESION_DRAFT = 'omda_adhesion_draft_v1';
  * Le code de suivi est un secret : il n'est JAMAIS écrit dans `AsyncStorage` (non chiffré).
  */
 const CLE_SECURE_IDENTIFIANTS_DOSSIER = 'omda_adhesion_identifiants_v1';
+
+/**
+ * Clé du trousseau sécurisé pour l'identité du candidat dans le brouillon.
+ * Contient des données personnelles sensibles (CIN, téléphone, email, adresse, pseudonyme) :
+ * elles ne doivent jamais rester en clair dans `AsyncStorage` (non chiffré).
+ */
+const CLE_SECURE_IDENTITE_CANDIDAT = 'omda_adhesion_identite_v1';
 
 type IdentifiantsDossier = { numero_dossier: string; code_suivi: string };
 
@@ -40,18 +47,47 @@ async function lireIdentifiantsSecurises(): Promise<IdentifiantsDossier | null> 
   }
 }
 
-/** Écrit le brouillon : identité/choix dans AsyncStorage, identifiants du dossier dans le trousseau. */
+async function lireIdentiteSecurisee(): Promise<IdentiteDraft | null> {
+  try {
+    const brut = await SecureStore.getItemAsync(CLE_SECURE_IDENTITE_CANDIDAT);
+    if (!brut) return null;
+    const analyse = JSON.parse(brut) as Partial<IdentiteDraft>;
+    return typeof analyse.nom === 'string' && typeof analyse.prenom === 'string'
+      ? (analyse as IdentiteDraft)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Écrit le brouillon :
+ * - identité dans le trousseau sécurisé (données personnelles sensibles) ;
+ * - reste du brouillon (hors identité et code de suivi) dans AsyncStorage non chiffré ;
+ * - identifiants du dossier dans le trousseau sécurisé.
+ */
 async function persisterBrouillon(brouillon: AdhesionDraft): Promise<void> {
   try {
     if (brouillon === BROUILLON_INITIAL) {
       await AsyncStorage.removeItem(CLE_STORAGE_ADHESION_DRAFT);
       await SecureStore.deleteItemAsync(CLE_SECURE_IDENTIFIANTS_DOSSIER);
+      await SecureStore.deleteItemAsync(CLE_SECURE_IDENTITE_CANDIDAT);
       return;
     }
+
+    // Identité dans le trousseau sécurisé (données sensibles).
+    await SecureStore.setItemAsync(
+      CLE_SECURE_IDENTITE_CANDIDAT,
+      JSON.stringify(brouillon.identite),
+    );
+
+    // Reste du brouillon dans AsyncStorage, sans l'identité ni le code de suivi.
+    const { identite, code_suivi, ...brouillonSansSecrets } = brouillon;
     await AsyncStorage.setItem(
       CLE_STORAGE_ADHESION_DRAFT,
-      JSON.stringify({ ...brouillon, code_suivi: null }),
+      JSON.stringify({ ...brouillonSansSecrets, code_suivi: null }),
     );
+
     if (brouillon.numero_dossier && brouillon.code_suivi) {
       await SecureStore.setItemAsync(
         CLE_SECURE_IDENTIFIANTS_DOSSIER,
@@ -161,23 +197,41 @@ export function AdhesionDraftProvider({ children }: { children: ReactNode }) {
   const [brouillon, setBrouillon] = useState<AdhesionDraft>(BROUILLON_INITIAL);
   const [estCharge, setEstCharge] = useState(false);
 
-  // Chargement : identité et choix depuis AsyncStorage, identifiants du dossier depuis le trousseau.
+  // Chargement : identité depuis le trousseau sécurisé, choix depuis AsyncStorage,
+  // identifiants du dossier depuis le trousseau.
   useEffect(() => {
     let actif = true;
     async function chargerDepuisStockage() {
       try {
         const contenu = await AsyncStorage.getItem(CLE_STORAGE_ADHESION_DRAFT);
         const parse = contenu ? (JSON.parse(contenu) as Partial<AdhesionDraft>) : null;
+        const identiteSecurisee = await lireIdentiteSecurisee();
         let identifiants = await lireIdentifiantsSecurises();
+
+        // Migration : d'anciennes versions stockaient l'identité en clair dans AsyncStorage.
+        if (!identiteSecurisee && parse?.identite) {
+          await SecureStore.setItemAsync(
+            CLE_SECURE_IDENTITE_CANDIDAT,
+            JSON.stringify(parse.identite),
+          );
+          // On retire l'identité d'AsyncStorage après migration.
+          const { identite: _identite, ...parseSansIdentite } = parse;
+          await AsyncStorage.setItem(
+            CLE_STORAGE_ADHESION_DRAFT,
+            JSON.stringify({ ...parseSansIdentite, code_suivi: null }),
+          );
+        }
+
         // Migration : d'anciennes versions stockaient le code de suivi en clair dans le brouillon.
         if (!identifiants && parse?.numero_dossier && parse.code_suivi) {
           identifiants = { numero_dossier: parse.numero_dossier, code_suivi: parse.code_suivi };
         }
-        if (actif && (parse || identifiants)) {
+
+        if (actif && (parse || identifiants || identiteSecurisee)) {
           setBrouillon((precedent) => ({
             ...precedent,
             ...(parse ?? {}),
-            identite: { ...precedent.identite, ...(parse?.identite ?? {}) },
+            identite: { ...precedent.identite, ...(identiteSecurisee ?? parse?.identite ?? {}) },
             numero_dossier: identifiants?.numero_dossier ?? null,
             code_suivi: identifiants?.code_suivi ?? null,
           }));

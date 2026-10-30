@@ -1,3 +1,30 @@
+- ÉTAPE 03 — SÉCURISATION DU CODE DE SUIVI ET DES DONNÉES CANDIDAT (fichiers modifiés : `src/context/AdhesionDraftContext.tsx`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN compte Supabase Auth créé pour un candidat, AUCUN mécanisme de sécurité fictif créé) :
+  1. `src/context/AdhesionDraftContext.tsx` :
+     - Ajout de `CLE_SECURE_IDENTITE_CANDIDAT` : clé dédiée dans `SecureStore` (expo-secure-store, Keychain iOS / Keystore Android, chiffré) pour l'identité du candidat dans le brouillon.
+     - `persisterBrouillon` écrit désormais `identite` (nom, prénom, pseudonyme, date_naissance, CIN, téléphone, email, adresse) dans `SecureStore` au lieu de `AsyncStorage` (non chiffré).
+     - Le reste du brouillon (catégorie, pièces, œuvres, horodatage) reste dans `AsyncStorage` sans identité ni code de suivi.
+     - `chargerDepuisStockage` lit l'identité depuis `SecureStore` et la fusionne avec le reste du brouillon.
+     - Migration automatique : si une ancienne version a stocké l'identité en clair dans `AsyncStorage`, elle est déplacée vers `SecureStore` puis effacée d'AsyncStorage ; même chose pour le code de suivi.
+     - `reinitialiserBrouillon` efface maintenant aussi `CLE_SECURE_IDENTITE_CANDIDAT`.
+
+  Règles de sécurité appliquées :
+  - Pas de données sensibles en clair dans `AsyncStorage` : l'identité complète (incluant CIN) est dans `SecureStore` (chiffré).
+  - Code de suivi jamais dans les journaux : aucun `console.log`/`console.warn` avec `code_suivi` dans le code source.
+  - Code de suivi transmis uniquement dans les en-têtes `X-Code-Suivi` quand requis par le contrat API.
+  - Reprise après fermeture : brouillon rechargé depuis `AsyncStorage` + `SecureStore` au montage du provider.
+  - Accès aux données sans authentification impossible : le suivi public exige `numero_dossier` + `code_suivi` (les deux, via en-têtes HTTP).
+  - Erreurs d'authentification du dossier gérées : `CODE_SUIVI_INVALIDE`, `DEMANDE_INTROUVABLE` → `ErrorState` + « Réessayer » (écrans `suivi.tsx` et `recapitulatif.tsx` déjà conformes).
+
+  Risques corrigés par cette étape :
+  1. Identité du candidat (CIN, email, téléphone, adresse, pseudonyme) stockée en clair dans `AsyncStorage` → déplacée dans `SecureStore` (chiffré).
+
+  Risques résiduels (acceptés, hors périmètre ou nécessitant du serveur) :
+  - Brute-force du code de suivi côté client : à gérer côté serveur (limitation de tentatives par IP).
+  - Pas de verrouillage biométrique/pincode au niveau de l'application : hors périmètre mobile (pas de back-office, périmètre strictement mobile).
+  - L'historique des dossiers soumis contient le code de suivi dans `SecureStore` : déjà chiffré, acceptable.
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie).
+
 - ÉTAPE 02 — GESTION DU CYCLE DE VIE DES DEMANDES CANDIDATS (fichiers modifiés : `src/context/AdhesionDraftContext.tsx`, `src/services/contracts/candidateApi.ts`, `app/(adhesion)/identite.tsx`, `app/(adhesion)/categorie.tsx`, `app/(adhesion)/documents-oeuvres.tsx`, `app/(adhesion)/recapitulatif.tsx`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN compte Supabase Auth créé pour un candidat) :
   1. `src/context/AdhesionDraftContext.tsx` :
      - Ajout de `pseudonyme: string` à `IdentiteDraft` (Règle métier 1 : distinct du nom/prénom, obligatoire).
