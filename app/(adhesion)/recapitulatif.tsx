@@ -23,10 +23,10 @@ type EtatEcran = 'chargement' | 'erreur' | 'vide' | 'contenu';
 
 /* -------------------------------------------------------------- Constantes */
 
-/** Nombre minimum d'œuvres exigé par la règle métier 8 (identique à l'écran J). */
+/** Nombre minimum d'œuvres exigé par la règle métier 2 (identique à l'écran J). */
 const NOMBRE_MINIMUM_OEUVRES = 2;
 
-/** Nombre minimum d'attestations de diffusion par œuvre (règle métier 8). */
+/** Nombre minimum d'attestations de diffusion par œuvre (règle métier 3, cas A). */
 const NOMBRE_MINIMUM_ATTESTATIONS = 1;
 
 type ExigencePiece = {
@@ -254,12 +254,13 @@ export default function RecapitulatifScreen() {
     return index;
   }, [brouillon.pieces]);
 
-  /** Œuvres complètes : titre + fichier + au moins une attestation de diffusion. */
+  /** Œuvres complètes : titre + fiche de déclaration + fichier + au moins une attestation de diffusion. */
   const oeuvresCompletes = useMemo(
     () =>
       brouillon.oeuvres.filter(
         (oeuvre) =>
           oeuvre.titre.trim().length > 0 &&
+          oeuvre.fiche_declaration.chemin_stockage.length > 0 &&
           oeuvre.fichier.chemin_stockage.length > 0 &&
           oeuvre.attestations.length >= NOMBRE_MINIMUM_ATTESTATIONS,
       ),
@@ -290,6 +291,9 @@ export default function RecapitulatifScreen() {
       const nom = `Œuvre ${index + 1}`;
       if (!oeuvre.titre.trim()) {
         liste.push(`${nom} : indiquez le titre.`);
+      }
+      if (!oeuvre.fiche_declaration.chemin_stockage) {
+        liste.push(`${nom} : fiche de déclaration à envoyer.`);
       }
       if (!oeuvre.fichier.chemin_stockage) {
         liste.push(`${nom} : fichier de l’œuvre à envoyer.`);
@@ -554,6 +558,15 @@ export default function RecapitulatifScreen() {
             <Text className="text-sm font-bold text-omda-black">
               {`Œuvre ${index + 1} — ${oeuvre.titre.trim() || 'titre à compléter'}`}
             </Text>
+            <LigneControle
+              libelle="Fiche de déclaration d’œuvre"
+              detail={
+                oeuvre.fiche_declaration.chemin_stockage
+                  ? nomFichier(oeuvre.fiche_declaration.chemin_stockage)
+                  : null
+              }
+              present={oeuvre.fiche_declaration.chemin_stockage.length > 0}
+            />
             <LigneControle
               libelle="Fichier de l’œuvre"
               detail={

@@ -1,3 +1,39 @@
+- ÉTAPE 05 — VALIDATION ET ENVOI FINAL D'UNE DEMANDE (fichiers modifiés : `app/(adhesion)/recapitulatif.tsx`, `server/src/server.mjs`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN formulaire fictif créé, AUCUN nouveau champ de base de données) :
+  1. `app/(adhesion)/recapitulatif.tsx` :
+     - Remplacement des commentaires obsolètes "règle métier 8" par les Règles 2 et 3.
+     - `oeuvresCompletes` vérifie désormais `fiche_declaration.chemin_stockage.length > 0` pour chaque œuvre (Règle 2).
+     - `manques` vérifie la présence de la fiche de déclaration par œuvre avant de bloquer l'envoi.
+     - Affichage du résumé : ajout de la ligne "Fiche de déclaration d’œuvre" pour chaque œuvre (distinction stricte avec l'attestation de diffusion, Règle 4).
+     - `creerDemande` inclut déjà `pseudonyme` (ajouté à l'étape 02).
+     - `soumettreDemande` envoie `brouillon.oeuvres` (incluant `fiche_declaration` depuis l'étape 04) avec `X-Code-Suivi` et `Idempotency-Key` (UUID v4).
+  2. `server/src/server.mjs` :
+     - `POST /v1/demandes` (création) : `pseudonyme` ajouté aux champs obligatoires de l'identité (Règle 1, validation côté serveur).
+     - `POST /v1/demandes/{numero}/envoi` (envoi) : `validerSoumission` vérifie `oeuvre.fiche_declaration` (Règle 2).
+     - Vérification des fichiers stockés : `fiche_declaration` ajoutée à la liste des objets à contrôler dans Supabase Storage (bucket `oeuvres`).
+     - Message d'erreur `DOSSIER_INCOMPLET` corrigé : ne mentionne plus "1 attestation par œuvre" (ancienne règle 8), mais renvoie vers les cas A/B/C de la Règle 3.
+     - Validations serveur déjà présentes : `X-Code-Suivi` + `X-Numero-Dossier` + `Idempotency-Key`, statut `BROUILLON` requis, existence des fichiers dans le stockage, cohérence MIME/taille.
+  3. `docs/PROGRESS.md` — cette entrée.
+
+  Règles métier appliquées :
+  - Règle 1 : `pseudonyme` obligatoire côté client (écran + contrat) et côté serveur (champs requis).
+  - Règle 2 : `fiche_declaration` obligatoire par œuvre, vérifiée côté client (complétude) et côté serveur (`validerSoumission` + vérification stockage).
+  - Règle 3 : pour le parcours candidat (cas A : adhésion non-membre), l'attestation de diffusion est obligatoire pour chaque œuvre. La conditionnalité cas B/C concernera l'espace membre.
+  - Règle 4 : distinction stricte fiche de déclaration / attestation / autres pièces (3 UploadTile par œuvre, 3 lignes de contrôle au récapitulatif, chemins de stockage séparés).
+  - Règle 5 : aucun champ inventé — `fiche_declaration` est un `FichierDepose` standard.
+
+  Problèmes résolus par cette étape :
+  1. Serveur ne vérifiait pas `pseudonyme` → ajouté aux champs obligatoires.
+  2. Serveur ne vérifiait pas `fiche_declaration` → ajouté à `validerSoumission` et à la vérification de stockage.
+  3. Message d'erreur obsolète "1 attestation par œuvre" → corrigé.
+  4. Récapitulatif ne vérifiait pas `fiche_declaration` → ajouté à `oeuvresCompletes` et `manques`.
+  5. Récapitulatif n'affichait pas la fiche de déclaration → ajout de la ligne de contrôle.
+
+  Problèmes encore en attente (étapes suivantes) :
+  - Attestation conditionnelle cas B/C (Règle 3) : pour le parcours candidat (cas A), l'attestation reste obligatoire. La conditionnalité concernera l'espace membre.
+  - Formulaires officiels de déclaration d'œuvre par catégorie : non localisés, point à clarifier par l'OMDA (§8.2 de API_CANDIDAT.md).
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie).
+
 - ÉTAPE 04 — FIABILITÉ DU TÉLÉVERSEMENT DES DOCUMENTS (fichiers modifiés : `src/services/contracts/candidateApi.ts`, `app/(adhesion)/documents-oeuvres.tsx`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN formulaire fictif créé, AUCUN type de document inventé) :
   1. `src/services/contracts/candidateApi.ts` :
      - Ajout de `fiche_declaration: FichierDepose` obligatoire à `OeuvreAdhesionEntree` (Règle métier 2).

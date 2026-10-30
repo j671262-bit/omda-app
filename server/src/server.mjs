@@ -213,7 +213,7 @@ function validerSoumission(body) {
     if (!oeuvre || typeof oeuvre.titre !== 'string' || !oeuvre.titre.trim() || oeuvre.titre.trim().length > 200 || typeof oeuvre.categorie_id !== 'string' || !UUID_RE.test(oeuvre.categorie_id)) return 'DONNEES_ENVOI_INVALIDES';
     if (oeuvre.description != null && (typeof oeuvre.description !== 'string' || oeuvre.description.length > 5000)) return 'DONNEES_ENVOI_INVALIDES';
     if (oeuvre.annee != null && (!Number.isInteger(oeuvre.annee) || oeuvre.annee < 1800 || oeuvre.annee > new Date().getUTCFullYear())) return 'DONNEES_ENVOI_INVALIDES';
-    if (!validerFichierReference(oeuvre.fichier, 'oeuvres') || !Array.isArray(oeuvre.attestations) || oeuvre.attestations.length < 1 || oeuvre.attestations.some((file) => !validerFichierReference(file, 'pieces', { attestation: true }))) return 'DOSSIER_INCOMPLET';
+    if (!validerFichierReference(oeuvre.fiche_declaration, 'oeuvres') || !validerFichierReference(oeuvre.fichier, 'oeuvres') || !Array.isArray(oeuvre.attestations) || oeuvre.attestations.length < 1 || oeuvre.attestations.some((file) => !validerFichierReference(file, 'pieces', { attestation: true }))) return 'DOSSIER_INCOMPLET';
   }
   return null;
 }
@@ -336,7 +336,7 @@ export function createOmdaServer({ settings = config, logger = console, fetchImp
       }
       const identite = body?.identite;
       const categorieId = body?.categorie_id;
-      const champs = ['nom', 'prenom', 'date_naissance', 'cin', 'telephone', 'email', 'adresse'];
+      const champs = ['nom', 'prenom', 'pseudonyme', 'date_naissance', 'cin', 'telephone', 'email', 'adresse'];
       if (!identite || typeof identite !== 'object' || champs.some((key) => typeof identite[key] !== 'string' || !identite[key].trim()) || typeof categorieId !== 'string' || !/^[0-9a-f-]{36}$/i.test(categorieId)) {
         return json(res, 422, { code: 'IDENTITE_INVALIDE', message: 'Veuillez vérifier les informations d’identité et la catégorie sélectionnée.', reference: requestId });
       }
@@ -529,7 +529,7 @@ export function createOmdaServer({ settings = config, logger = console, fetchImp
       const validation = validerSoumission(body);
       if (validation) {
         const code = validation;
-        return json(res, 422, { code, message: code === 'DOSSIER_INCOMPLET' ? 'Votre dossier est incomplet : photo, pièce d’identité, au moins 2 œuvres et 1 attestation par œuvre sont exigées.' : 'Les informations envoyées ne respectent pas le contrat de soumission.', reference: requestId });
+        return json(res, 422, { code, message: code === 'DOSSIER_INCOMPLET' ? 'Votre dossier est incomplet : chaque œuvre doit être accompagnée de sa fiche de déclaration, et d’une attestation de diffusion selon votre situation (cas A/B/C de la règle 3).' : 'Les informations envoyées ne respectent pas le contrat de soumission.', reference: requestId });
       }
       try {
         if (bloqueParEchecs(res, numero, requestId)) return;
@@ -541,7 +541,7 @@ export function createOmdaServer({ settings = config, logger = console, fetchImp
         // Vérifier que chaque chemin correspond à un objet qui existe réellement dans le stockage privé.
         const fichiers = [
           ...body.pieces.map((file) => ({ ...file, bucket: 'pieces' })),
-          ...body.oeuvres.flatMap((work) => [{ ...work.fichier, bucket: 'oeuvres' }, ...work.attestations.map((file) => ({ ...file, bucket: 'pieces' }))]),
+          ...body.oeuvres.flatMap((work) => [{ ...work.fiche_declaration, bucket: 'oeuvres' }, { ...work.fichier, bucket: 'oeuvres' }, ...work.attestations.map((file) => ({ ...file, bucket: 'pieces' }))]),
         ];
         for (const file of fichiers) {
           const objectPath = file.chemin_stockage.slice(file.bucket.length + 1);
