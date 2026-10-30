@@ -82,6 +82,9 @@ const PREFIXE_API = '/v1';
 /** Délai maximal d'une requête JSON, au-delà duquel l'erreur est `reseau`. */
 export const DELAI_TIMEOUT_MS = 15000;
 
+/** Nombre maximal de tentatives de retry après une erreur réseau (hors la première). */
+const NB_RESEAU_MAX = 2;
+
 /** Délai maximal d'un téléversement multipart (fichiers de 20 Mo maximum). */
 export const DELAI_TIMEOUT_TELEVERSEMENT_MS = 120000;
 
@@ -358,6 +361,10 @@ type RequeteJson = {
  * Requête JSON avec délai maximal (`DELAI_TIMEOUT_MS`) et mapping d'erreurs :
  * transport absent / timeout ⇒ `reseau`, corps illisible ⇒ `serveur`.
  * Aucune exception ne remonte à l'UI (contrat `Result`).
+ *
+ * Retry automatique : en cas d'erreur `reseau`, la requête est retryée jusqu'à
+ * `NB_RESEAU_MAX` fois avec un délai croissant (backoff) entre chaque tentative.
+ * Cela gère les coupures réseau transitoires sans intervention utilisateur.
  */
 async function demander({ methode, chemin, corps, enTetes }: RequeteJson): Promise<Result<unknown>> {
   if (API_BASE_URL === '') {
@@ -378,34 +385,72 @@ async function demander({ methode, chemin, corps, enTetes }: RequeteJson): Promi
     entetes['Content-Type'] = 'application/json';
   }
 
-  const controleur = new AbortController();
-  let echecParDelai = false;
-  const minuteur = setTimeout(() => {
-    echecParDelai = true;
-    controleur.abort();
-  }, DELAI_TIMEOUT_MS);
+  const contreRetry: number[] = [500, 1000]; // ms entre les tentatives (backoff)
+  let derniereErreur: ResultErr | null = null;
 
-  let reponse: Response;
-  try {
-    reponse = await fetch(urlDepuisChemin(chemin), {
-      method: methode,
-      headers: entetes,
-      body: corpsTexte ?? undefined,
-      signal: controleur.signal,
-    });
-  } catch (cause) {
-    return erreurReseau(echecParDelai ? `délai dépassé après ${DELAI_TIMEOUT_MS} ms` : texteDe(cause));
-  } finally {
-    clearTimeout(minuteur);
+  for (let tentative = 0; tentative <= NB_RESEAU_MAX; tentative += 1) {
+    const controleur = new AbortController();
+    let echecParDelai = false;
+    const minuteur = setTimeout(() => {
+      echecParDelai = true;
+      controleur.abort();
+    }, DELAI_TIMEOUT_MS);
+
+    let reponse: Response;
+    try {
+      reponse = await fetch(urlDepuisChemin(chemin), {
+        method: methode,
+        headers: entetes,
+        body: corpsTexte ?? undefined,
+        signal: controleur.signal,
+      });
+    } catch (cause) {
+      clearTimeout(minuteur);
+      derniereErreur = erreurReseau(echecParDelai ? `délai dépassé après ${DELAI_TIMEOUT_MS} ms` : texteDe(cause));
+      // Ne pas retry sur une erreur de sérialisation ou d'API non configurée : c'est définitif.
+      if (tentative < NB_RESEAU_MAX) {
+        await attendre(contreRetry[tentative] ?? 0);
+        continue;
+      }
+      return derniereErreur;
+    } finally {
+      clearTimeout(minuteur);
+    }
+
+    let texte = '';
+    try {
+      texte = await reponse.text();
+    } catch (cause) {
+      clearTimeout(minuteur);
+      derniereErreur = erreurServeur({ statut_http: reponse.status, reference: texteDe(cause) });
+      if (tentative < NB_RESEAU_MAX) {
+        await attendre(contreRetry[tentative] ?? 0);
+        continue;
+      }
+      return derniereErreur;
+    }
+
+    const resultat = classerReponse(reponse.status, texte);
+    if (resultat.ok || resultat.erreur.type !== 'reseau') {
+      return resultat;
+    }
+    // Erreur réseau côté serveur (5xx) : retry possible.
+    derniereErreur = resultat;
+    if (tentative < NB_RESEAU_MAX) {
+      await attendre(contreRetry[tentative] ?? 0);
+      continue;
+    }
+    return derniereErreur;
   }
 
-  let texte = '';
-  try {
-    texte = await reponse.text();
-  } catch (cause) {
-    return erreurServeur({ statut_http: reponse.status, reference: texteDe(cause) });
-  }
-  return classerReponse(reponse.status, texte);
+  return derniereErreur ?? erreurServeur();
+}
+
+/**
+ * Attend un délai donné (ms) avant la prochaine tentative.
+ */
+function attendre(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /* --------------------------------------------- Schémas des réponses */

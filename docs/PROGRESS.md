@@ -1,3 +1,33 @@
+- ÉTAPE 07 — GESTION DES ERREURS ET DES INTERRUPTIONS CANDIDAT (fichiers modifiés : `src/services/http/HttpCandidateApi.ts`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN nouveau champ de base de données, AUCUN formulaire fictif créé) :
+  1. `src/services/http/HttpCandidateApi.ts` :
+     - Ajout d'un mécanisme de retry automatique dans `demander()` : jusqu'à `NB_RESEAU_MAX` (2) tentatives supplémentaires après une erreur `reseau` (timeout ou échec réseau), avec backoff croissant (500 ms, 1 000 ms) entre chaque tentative.
+     - Ajout de la constante `NB_RESEAU_MAX = 2` et de la fonction utilitaire `attendre(ms)`.
+     - Le retry ne s'applique qu'aux erreurs de type `reseau` (jamais sur `metier` ou `serveur` définitif) ; une erreur 5xx du serveur est retryable, une erreur 4xx ne l'est pas.
+     - Toute réponse `ok` ou non-`reseau` est retournée immédiatement sans retry supplémentaire.
+  2. `docs/PROGRESS.md` — cette entrée.
+
+  Règles de robustesse appliquées :
+  - Pas de suppression de données sans action explicite : le retry ne modifie aucune donnée locale.
+  - Aucune erreur serveur n'est masquée : après épuisement des tentatives, l'erreur `reseau` ou `serveur` est retournée telle quelle à l'UI.
+  - Aucun succès fictif : le retry retourne uniquement un vrai succès HTTP 2xx validé contre le contrat.
+  - Respect du contrat API : les en-têtes, délais et mapping d'erreurs sont inchangés.
+
+  État des 10 points de vérification (ÉTAPE 07) :
+  | # | Point | Statut | Constat |
+  |---|-------|--------|---------|
+  | 1 | Erreurs réseau | ✅ CONFORME | `Result` type `reseau` propagé ; `ErrorState` + « Réessayer » sur tous les écrans ; retry automatique ajouté dans `demander()`. |
+  | 2 | Délais d'attente | ✅ CONFORME | `DELAI_TIMEOUT_MS = 15000` (JSON) et `DELAI_TIMEOUT_TELEVERSEMENT_MS = 120000` (upload) ; dépassement ⇒ `reseau` avec retry. |
+  | 3 | Erreurs d'upload | ✅ CONFORME | Contrôles MIME + 20 Mo pré-envoi ; UploadTile avec `onReessayer` ; message d'erreur explicite. |
+  | 4 | Erreurs de validation serveur | ✅ CONFORME | `validerSoumission` vérifie `pseudonyme`, `fiche_declaration`, `fichier`, `attestations`, `categorie_id`, `pieces` ; `422 DOSSIER_INCOMPLET` avec message. |
+  | 5 | Retour à l'écran précédent | ✅ CONFORME | Navigation linéaire avec `router.back()` ; aucun écran ne permet de revenir après envoi confirmé. |
+  | 6 | Reprise après fermeture | ✅ CONFORME | `chargerDepuisStockage` dans `AdhesionDraftContext` ; brouillon repris depuis `AsyncStorage` + `SecureStore`. |
+  | 7 | Pas de brouillons en double | ✅ CONFORME | `definirIdentifiantsDossier` stocke `demande_id` ; `creerDemande` non rappelé si `numero_dossier` + `code_suivi` existent. |
+  | 8 | Pas d'envois multiples | ✅ CONFORME | `envoiEnCours` drapeau côté client + `Idempotency-Key` UUID v4 côté serveur (`omda_envoi_idempotence`). |
+  | 9 | Associations œuvres ↔ documents | ✅ CONFORME | `signatureOeuvres` inclut `fiche_declaration`, `fichier`, `attestations` ; sauvegarde par signature stable. |
+  | 10 | Interruption pendant fiche/attestation | ✅ CONFORME | `EnvoiFichier` conserve `statut`, `progression`, `selection`, `depose`, `erreur` ; remplacement ou suppression possible tant que la demande n'est pas envoyée. |
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie).
+
 - ÉTAPE 06 — CONFIRMATION ET SUIVI DU CANDIDAT (aucun fichier code modifié — écrans déjà conformes, `docs/PROGRESS.md` uniquement) :
   Vérifications effectuées sur `app/(adhesion)/confirmation.tsx` et `app/(candidat)/suivi.tsx` :
   1. Informations retournées après l'envoi : `confirmation.tsx` affiche `numero_dossier`, `code_suivi`, `statut`, `date_soumission`, `delai_indicatif_heures` depuis les paramètres de navigation (écran K) ou l'historique local (`historiqueDossiers`). Aucun statut simulé.
