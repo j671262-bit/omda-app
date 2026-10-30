@@ -1,3 +1,69 @@
+- ÉTAPE 08 — TESTS COMPLETS DU PARCOURS CANDIDAT (fichiers modifiés : `server/test/server.test.mjs`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN nouveau champ de base de données, AUCUN formulaire fictif créé, aucun mock utilisé dans le parcours réel) :
+  1. `server/test/server.test.mjs` :
+     - Test existant corrigé (ligne 53) : `pseudonyme` ajouté à l'identité pour atteindre la vérification de `trackingCodePepper` (503 `CONFIGURATION_SECURITE_INCOMPLETE`).
+     - Test existant corrigé (ligne 66) : `pseudonyme` ajouté à l'identité pour atteindre la vérification d'âge (422 `AGE_INSUFFISANT`).
+     - Test existant corrigé (ligne 199) : `fiche_declaration` ajouté à chaque œuvre avec taille cohérente (200) pour le mock de stockage (200 `ENVOYEE` sans paiement).
+     - Nouveau test : `candidate draft requires pseudonyme (règle métier 1)` — sans `pseudonyme` → 422 `IDENTITE_INVALIDE`.
+     - Nouveau test : `submission requires fiche_declaration per oeuvre (règle métier 2)` — sans `fiche_declaration` → 422 `DOSSIER_INCOMPLET`.
+  2. `docs/PROGRESS.md` — cette entrée.
+
+  Résultats des tests :
+  | Métrique | Valeur |
+  |---|---|
+  | Tests totaux | 32 |
+  | Tests passés | 32 |
+  | Tests échoués | 0 |
+  | `npx tsc --noEmit` | 0 erreur |
+
+  Scénarios couverts par les tests (32) :
+  | # | Scénario | Statut | Test |
+  |---|----------|--------|------|
+  | 1 | Health check | ✅ | `health exposes integration readiness...` |
+  | 2 | Paiement fails closed | ✅ | `payment initiation fails closed...` |
+  | 3 | Draft rejects invalid payloads | ✅ | `candidate draft rejects invalid payloads...` |
+  | 4 | Draft fails closed without tracking secret | ✅ | `candidate draft fails closed when tracking secret...` |
+  | 5 | Draft enforces minimum age | ✅ | `candidate draft enforces minimum age` |
+  | 6 | **Pseudonyme obligatoire (Règle 1)** | ✅ | `candidate draft requires pseudonyme (règle métier 1)` |
+  | 7 | Production rejects unlisted origins | ✅ | `production rejects unlisted browser origins` |
+  | 8 | Payment readiness | ✅ | `payment readiness requires every secret...` |
+  | 9 | Draft update rejects malformed payloads | ✅ | `draft update rejects malformed payloads...` |
+  | 10 | Draft update requires tracking code | ✅ | `draft update requires a tracking code...` |
+  | 11 | File upload rejects missing credentials | ✅ | `file upload rejects missing dossier credentials...` |
+  | 12 | File upload rejects MIME mismatch | ✅ | `file upload rejects a file whose bytes...` |
+  | 13 | File upload fails closed without Supabase | ✅ | `file upload fails closed when Supabase...` |
+  | 14 | Submission rejects < 2 works | ✅ | `submission rejects a dossier with fewer than two works...` |
+  | 15 | **Submission with fiche_declaration (Règle 2)** | ✅ | `submission verifies the draft and stored files...` |
+  | 16 | **Submission requires fiche_declaration (Règle 2)** | ✅ | `submission requires fiche_declaration per oeuvre...` |
+  | 17 | File upload sends to Storage | ✅ | `file upload sends validated bytes...` |
+  | 18 | File upload rejects missing dossier context | ✅ | `file upload rejects requests without a dossier...` |
+  | 19 | File upload rejects incorrect tracking code | ✅ | `file upload rejects an incorrect tracking code...` |
+  | 20 | File upload refuses non-draft dossier | ✅ | `file upload refuses a dossier that is no longer...` |
+  | 21 | Tracking returns last update | ✅ | `tracking returns the actual last update...` |
+  | 22 | Tracking returns rejection reason | ✅ | `tracking returns rejection reason...` |
+  | 23 | Tracking fails closed without rejection reason | ✅ | `tracking fails closed if a rejected dossier...` |
+  | 24 | Tracking chooses category-specific tariff | ✅ | `tracking chooses the category-specific adhesion tariff...` |
+  | 25 | Malformed dossier number → 400 | ✅ | `un numéro de dossier mal encodé...` |
+  | 26 | Internal exception → 500 | ✅ | `une exception interne est convertie en 500...` |
+  | 27 | Rate limiting by IP | ✅ | `la création de dossiers est limitée par adresse IP` |
+  | 28 | Tracking code lockout | ✅ | `trop de codes de suivi erronés bloquent le dossier...` |
+  | 29 | Valid code accepted | ✅ | `le code de suivi correct reste accepté...` |
+  | 30 | TRUST_PROXY_HOPS with proxy | ✅ | `TRUST_PROXY_HOPS : l'adresse du client...` |
+  | 31 | Invalid TRUST_PROXY_HOPS | ✅ | `TRUST_PROXY_HOPS invalide est refusé...` |
+  | 32 | Rate limiting env vars | ✅ | `les limites de débit se règlent par variables...` |
+
+  Scénarios NON encore couverts (à traiter aux étapes suivantes) :
+  - Tests côté mobile (app/ ou src/) : aucun test n'existe actuellement
+  - Attestation conditionnelle Cas B (membre catégorie supplémentaire) et Cas C (membre catégorie détenue) : gérée côté client, pas testable côté serveur sans contexte de situation
+  - Reprise de brouillon après fermeture : gérée par `AdhesionDraftContext`, pas de test dédié
+  - Interruption pendant upload d'attestation : gérée par `EnvoiFichier`, pas de test dédié
+
+  Règles métier vérifiées par les tests :
+  - Règle 1 : `pseudonyme` obligatoire (test dédié)
+  - Règle 2 : `fiche_declaration` obligatoire par œuvre (2 tests dédiés)
+  - Règle 3 : Pour le parcours candidat (cas A), l'attestation est obligatoire (couverts par les tests de soumission)
+  - Règle 4 : Distinction des documents (chemins de stockage séparés pour `fiche_declaration`, `fichier`, `attestations`)
+  - Règle 5 : Aucun champ inventé — `fiche_declaration` est un `FichierDepose` standard
+
 - ÉTAPE 07 — GESTION DES ERREURS ET DES INTERRUPTIONS CANDIDAT (fichiers modifiés : `src/services/http/HttpCandidateApi.ts`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN nouveau champ de base de données, AUCUN formulaire fictif créé) :
   1. `src/services/http/HttpCandidateApi.ts` :
      - Ajout d'un mécanisme de retry automatique dans `demander()` : jusqu'à `NB_RESEAU_MAX` (2) tentatives supplémentaires après une erreur `reseau` (timeout ou échec réseau), avec backoff croissant (500 ms, 1 000 ms) entre chaque tentative.

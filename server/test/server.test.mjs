@@ -54,7 +54,7 @@ test('candidate draft fails closed when tracking secret is not configured', asyn
   await withServer(async (base) => {
     const response = await fetch(`${base}/v1/demandes`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
-        identite: { nom: 'RAKOTO', prenom: 'Jean', date_naissance: '1996-04-12', cin: '101234567890', telephone: '+261341234567', email: 'jean@example.mg', adresse: 'Antananarivo' },
+        identite: { nom: 'RAKOTO', prenom: 'Jean', pseudonyme: 'Rakoto Chanteur', date_naissance: '1996-04-12', cin: '101234567890', telephone: '+261341234567', email: 'jean@example.mg', adresse: 'Antananarivo' },
         categorie_id: '8f0f0d3a-1c2b-4a1e-9f0e-1d2c3b4a5e6f',
       }),
     });
@@ -67,13 +67,27 @@ test('candidate draft enforces minimum age', async () => {
   await withServer(async (base) => {
     const response = await fetch(`${base}/v1/demandes`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
-        identite: { nom: 'RAKOTO', prenom: 'Jean', date_naissance: '2015-01-01', cin: '101234567890', telephone: '+261341234567', email: 'jean@example.mg', adresse: 'Antananarivo' },
+        identite: { nom: 'RAKOTO', prenom: 'Jean', pseudonyme: 'Rakoto Chanteur', date_naissance: '2015-01-01', cin: '101234567890', telephone: '+261341234567', email: 'jean@example.mg', adresse: 'Antananarivo' },
         categorie_id: '8f0f0d3a-1c2b-4a1e-9f0e-1d2c3b4a5e6f',
       }),
     });
     assert.equal(response.status, 422);
     assert.equal((await response.json()).code, 'AGE_INSUFFISANT');
   });
+});
+
+test('candidate draft requires pseudonyme (règle métier 1)', async () => {
+  const settings = readConfig({ HOST: '127.0.0.1', PORT: '8080', TRACKING_CODE_PEPPER: 'x'.repeat(40) });
+  await withServer(async (base) => {
+    const response = await fetch(`${base}/v1/demandes`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+        identite: { nom: 'RAKOTO', prenom: 'Jean', date_naissance: '1996-04-12', cin: '101234567890', telephone: '+261341234567', email: 'jean@example.mg', adresse: 'Antananarivo' },
+        categorie_id: '8f0f0d3a-1c2b-4a1e-9f0e-1d2c3b4a5e6f',
+      }),
+    });
+    assert.equal(response.status, 422);
+    assert.equal((await response.json()).code, 'IDENTITE_INVALIDE');
+  }, settings);
 });
 
 test('production rejects unlisted browser origins', async () => {
@@ -219,6 +233,7 @@ test('submission verifies the draft and stored files then returns server confirm
   ];
   const oeuvres = [1, 2].map((n) => ({
     titre: `Oeuvre ${n}`, categorie_id: categorie,
+    fiche_declaration: { chemin_stockage: `oeuvres/${n === 1 ? uuid : pdfUuid}/fiche.pdf`, mime_type: 'application/pdf', taille_octets: 200 },
     fichier: { chemin_stockage: `oeuvres/${n === 1 ? uuid : pdfUuid}/audio.wav`, mime_type: 'audio/wav', taille_octets: 200 },
     attestations: [{ chemin_stockage: `pieces/${n === 1 ? pdfUuid : uuid}/attestation.pdf`, mime_type: 'application/pdf', taille_octets: 200 }],
   }));
@@ -234,6 +249,39 @@ test('submission verifies the draft and stored files then returns server confirm
     assert.equal(body.delai_indicatif_heures, 72);
     assert.equal(body.date_soumission, '2026-10-26T10:00:00.000Z');
     assert.equal('paiement' in body, false);
+  }, settings, fetchImpl);
+});
+
+test('submission requires fiche_declaration per oeuvre (règle métier 2)', async () => {
+  const pepper = 'x'.repeat(40);
+  const code = 'ABCD2345';
+  const numero = 'OMDA-2026-NOFICHE';
+  const categorie = '8f0f0d3a-1c2b-4a1e-9f0e-1d2c3b4a5e6f';
+  const settings = readConfig({ HOST: '127.0.0.1', PORT: '8080', TRACKING_CODE_PEPPER: pepper,
+    SUPABASE_URL: 'https://omda-test.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'server-only-test-key' });
+  const hash = createHash('sha256').update(`${pepper}:${code}`).digest('hex');
+  const fetchImpl = async (url) => {
+    const target = String(url);
+    if (target.includes('/rest/v1/demande_adhesion?')) return new Response(JSON.stringify([{ id: 'demande-id', candidat_id: 'candidat-id', numero_dossier: numero, jeton_suivi_hash: hash, statut: 'BROUILLON', categorie_id: categorie }]), { status: 200 });
+    throw new Error(`Unexpected mocked request: ${target}`);
+  };
+  const uuid = '11111111-1111-4111-8111-111111111111';
+  const pieces = [
+    { type: 'PHOTO', chemin_stockage: `pieces/${uuid}/photo.jpg`, mime_type: 'image/jpeg', taille_octets: 100 },
+    { type: 'CIN', chemin_stockage: `pieces/${uuid}/cin.pdf`, mime_type: 'application/pdf', taille_octets: 200 },
+  ];
+  const oeuvres = [{
+    titre: 'Oeuvre 1', categorie_id: categorie,
+    fichier: { chemin_stockage: `oeuvres/${uuid}/audio.wav`, mime_type: 'audio/wav', taille_octets: 200 },
+    attestations: [{ chemin_stockage: `pieces/${uuid}/attestation.pdf`, mime_type: 'application/pdf', taille_octets: 200 }],
+  }];
+  await withServer(async (base) => {
+    const response = await fetch(`${base}/v1/demandes/${numero}/envoi`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-numero-dossier': numero, 'x-code-suivi': code, 'idempotency-key': 'test-key-123456' },
+      body: JSON.stringify({ categorie_id: categorie, pieces, oeuvres }),
+    });
+    assert.equal(response.status, 422);
+    assert.equal((await response.json()).code, 'DOSSIER_INCOMPLET');
   }, settings, fetchImpl);
 });
 
