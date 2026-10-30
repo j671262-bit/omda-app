@@ -42,6 +42,31 @@
 
   Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie, aucun code modifié).
 
+- ÉTAPE 13 — DEMANDE DE CATÉGORIE SUPPLÉMENTAIRE (aucun fichier code modifié — aucune modification nécessaire, contrainte ÉTAPE 00 respectée) :
+  1. `demander-categorie-oeuvres.tsx` — lecture uniquement :
+     - L'écran gère la sélection de catégorie via `demanderCategorieSupplementaireAvecOeuvres`
+     - Le pseudonyme du membre est réutilisé (via `AdhesionDraft`/`AdhesionDraftContext`)
+     - L'écran valide les 2 œuvres minimales avec titre, fichier et attestation
+     - La catégorie doit être `ACTIVE` et non déjà demandée
+  2. `src/services/contracts/memberRepository.ts` — lecture uniquement :
+     - `demanderCategorieSupplementaireAvecOeuvres(entree)` utilise `OeuvreDemandeCategorieEntree` qui inclut `fiche_declaration` et `attestation` par œuvre
+     - La validation côté serveur vérifie `pseudonyme`, `fiche_declaration` par œuvre, `attestation` par œuvre
+     - La règle métier 3 (cas B) s'applique : attestation obligatoire pour catégorie supplémentaire
+  3. `docs/PROGRESS.md` — cette entrée.
+
+  Règles métier appliquées :
+  - Règle 1 : pseudonyme réutilisé depuis l'adhésion (déjà implémenté Étape 02)
+  - Règle 2 : fiche de déclaration obligatoire par œuvre (déjà implémenté Étape 04)
+  - Règle 3 : attestation obligatoire pour catégorie supplémentaire (Cas B), non obligatoire pour dépôt en catégorie déjà détenue (Cas C)
+  - Règle 4 : distinction stricte entre fiche de déclaration, attestation et autres documents
+  - Règle 5 : aucun champ inventé — `fiche_declaration` et `attestation` sont des `FichierDepose` standard
+
+  Problèmes encore en attente (à traiter aux étapes suivantes) :
+  - Tests côté mobile pour le parcours de demande de catégorie
+  - Validation serveur supplémentaire pour les cas C (dépôt en catégorie déjà détenue)
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie, aucun code nouveau n'a été modifié à cette étape).
+
 - ÉTAPE 10 — PROFIL DU MEMBRE (aucun fichier code modifié — aucune modification possible sans ajout de champ en base, contrainte ÉTAPE 00 respectée) :
   1. `app/(membre)/(tabs)/profil.tsx` — lecture uniquement, aucune modification :
      - Section "Informations modifiables" : téléphone uniquement (champ `telephone` via `mettreAJourProfil`)
