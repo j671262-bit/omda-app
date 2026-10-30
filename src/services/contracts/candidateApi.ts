@@ -53,14 +53,20 @@ export type PieceEntree = FichierDepose & {
 
 /**
  * Œuvre du dossier d'adhésion.
- * Règle métier 8 : au moins 2 œuvres et 1 attestation de diffusion par œuvre.
+ * Règle métier 2 : chaque œuvre doit obligatoirement être accompagnée d'une
+ * fiche de déclaration d'œuvre. Règle métier 3 : l'attestation de diffusion
+ * est obligatoire pour chaque œuvre dans le cas A (adhésion d'un non-membre),
+ * qui est le seul cas du parcours candidat.
  */
 export type OeuvreAdhesionEntree = {
   titre: string;
   categorie_id: UUID;
   description?: string | null;
   annee?: number | null;
+  /** Fiche de déclaration d'œuvre, obligatoire (Règle métier 2). */
+  fiche_declaration: FichierDepose;
   fichier: FichierDepose;
+  /** Attestation de diffusion, obligatoire pour le parcours candidat (cas A, Règle métier 3). */
   attestations: FichierDepose[];
 };
 

@@ -1,3 +1,39 @@
+- ÉTAPE 04 — FIABILITÉ DU TÉLÉVERSEMENT DES DOCUMENTS (fichiers modifiés : `src/services/contracts/candidateApi.ts`, `app/(adhesion)/documents-oeuvres.tsx`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN formulaire fictif créé, AUCUN type de document inventé) :
+  1. `src/services/contracts/candidateApi.ts` :
+     - Ajout de `fiche_declaration: FichierDepose` obligatoire à `OeuvreAdhesionEntree` (Règle métier 2).
+     - Remplacement du commentaire obsolète "règle métier 8" par la documentation des Règles 2 et 3.
+  2. `app/(adhesion)/documents-oeuvres.tsx` :
+     - Type `OeuvreEnCours` étendu avec `fiche_declaration: EnvoiFichier`.
+     - Type `CibleEnvoi` étendu avec `{ nature: 'fiche_declaration'; cle: string }`.
+     - `oeuvreVide()` initialise `fiche_declaration` à `ENVOI_VIDE`.
+     - `oeuvresInitiales()` reprend `fiche_declaration` depuis le brouillon serveur.
+     - `envoisDepuisBrouillonOEuvres()` reprend la fiche de déclaration et l'attestation.
+     - `envoiDe()` et `definirEnvoi()` gèrent la nature `fiche_declaration`.
+     - `manques` vérifie que `fiche_declaration.statut === 'reussi'` pour chaque œuvre.
+     - `oeuvresCompletes` vérifie `fiche_declaration` avant de valider une œuvre et l'inclut dans `OeuvreAdhesionEntree`.
+     - `signatureOeuvres` inclut `fiche_declaration` dans le hash de comparaison.
+     - Rendu JSX : UploadTile « Fiche de déclaration d’œuvre » ajouté pour chaque œuvre (entre le titre et le fichier).
+     - Message d'information mis à jour : « 2 œuvres minimum — fiche de déclaration obligatoire par œuvre ».
+  3. `docs/PROGRESS.md` — cette entrée.
+
+  Règles métier appliquées :
+  - Règle 2 : fiche de déclaration d'œuvre obligatoire pour chaque œuvre (cas A : parcours candidat), lien un-à-un œuvre ↔ fiche, modèle dépendant de la catégorie (les champs réels restent à confirmer par l'OMDA, voir §8.2 de API_CANDIDAT.md).
+  - Règle 3 : attestation de diffusion obligatoire pour chaque œuvre dans le cas A (adhésion non-membre — seul cas du parcours candidat).
+  - Règle 4 : distinction stricte entre fiche de déclaration, attestation de diffusion et autres pièces (3 UploadTile distincts par œuvre, chemins de stockage séparés).
+  - Règle 5 : aucun champ inventé — `fiche_declaration` est un `FichierDepose` standard, les modèles officiels de fiches par catégorie restent en attente de l'OMDA.
+
+  Problèmes résolus par cette étape :
+  1. `fiche_declaration` ajouté au contrat `OeuvreAdhesionEntree`.
+  2. UploadTile dédié pour la fiche de déclaration par œuvre.
+  3. Vérification de complétude incluant la fiche de déclaration.
+  4. Sauvegarde et reprise de la fiche de déclaration dans le brouillon.
+
+  Problèmes encore en attente (étapes suivantes) :
+  - Attestation conditionnelle cas B/C (Règle 3) : pour le parcours candidat (cas A), l'attestation reste obligatoire. La conditionnalité concernera l'espace membre.
+  - Formulaires officiels de déclaration d'œuvre par catégorie : non localisés dans le projet, point à clarifier par l'OMDA.
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie).
+
 - ÉTAPE 03 — SÉCURISATION DU CODE DE SUIVI ET DES DONNÉES CANDIDAT (fichiers modifiés : `src/context/AdhesionDraftContext.tsx`, `docs/PROGRESS.md` — AUCUNE migration SQL, AUCUNE donnée existante modifiée, AUCUN compte Supabase Auth créé pour un candidat, AUCUN mécanisme de sécurité fictif créé) :
   1. `src/context/AdhesionDraftContext.tsx` :
      - Ajout de `CLE_SECURE_IDENTITE_CANDIDAT` : clé dédiée dans `SecureStore` (expo-secure-store, Keychain iOS / Keystore Android, chiffré) pour l'identité du candidat dans le brouillon.

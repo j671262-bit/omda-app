@@ -135,10 +135,11 @@ const ENVOI_VIDE: EnvoiFichier = {
   erreur: null,
 };
 
-/** Œuvre en cours de composition : titre + fichier + au moins 1 attestation. */
+/** Œuvre en cours de composition : titre, fiche de déclaration, fichier et attestation. */
 type OeuvreEnCours = {
   cle: string;
   titre: string;
+  fiche_declaration: EnvoiFichier;
   fichier: EnvoiFichier;
   attestation: EnvoiFichier;
 };
@@ -146,6 +147,7 @@ type OeuvreEnCours = {
 /** Cible d'un envoi de fichier sur cet écran. */
 type CibleEnvoi =
   | { nature: 'piece'; type: TypePiece }
+  | { nature: 'fiche_declaration'; cle: string }
   | { nature: 'oeuvre'; cle: string }
   | { nature: 'attestation'; cle: string };
 
@@ -324,6 +326,20 @@ function envoisDepuisBrouillon(pieces: PieceEntree[]): Partial<Record<TypePiece,
   return envois;
 }
 
+/** Reprise des œuvres déjà enregistrées dans le brouillon. */
+function envoisDepuisBrouillonOEuvres(oeuvres: OeuvreAdhesionEntree[]): Partial<Record<string, EnvoiFichier>> {
+  const envois: Partial<Record<string, EnvoiFichier>> = {};
+  for (const oeuvre of oeuvres) {
+    // Fichier
+    envois[oeuvre.titre] = envoiDepuisDepot(oeuvre.fichier);
+    // Fiche de déclaration
+    envois[oeuvre.titre + '_fiche'] = oeuvre.fiche_declaration ? envoiDepuisDepot(oeuvre.fiche_declaration) : ENVOI_VIDE;
+    // Attestation
+    envois[oeuvre.titre + '_attestation'] = oeuvre.attestations.length > 0 ? envoiDepuisDepot(oeuvre.attestations[0]) : ENVOI_VIDE;
+  }
+  return envois;
+}
+
 /** Signature stable d'une liste de pièces (comparaison avec le brouillon). */
 function signaturePieces(pieces: PieceEntree[]): string {
   return JSON.stringify(
@@ -337,6 +353,9 @@ function signatureOeuvres(oeuvres: OeuvreAdhesionEntree[]): string {
     oeuvres.map((oeuvre) => [
       oeuvre.titre,
       oeuvre.categorie_id,
+      oeuvre.fiche_declaration.chemin_stockage,
+      oeuvre.fiche_declaration.mime_type,
+      oeuvre.fiche_declaration.taille_octets,
       oeuvre.fichier.chemin_stockage,
       oeuvre.fichier.mime_type,
       oeuvre.fichier.taille_octets,
@@ -357,11 +376,12 @@ function nouvelleCleOeuvre(): string {
   return `oeuvre-${compteurOeuvres}`;
 }
 
-/** Ligne d'œuvre vide : titre, fichier et attestation à fournir. */
+/** Ligne d'œuvre vide : titre, fiche de déclaration, fichier et attestation à fournir. */
 function oeuvreVide(): OeuvreEnCours {
   return {
     cle: nouvelleCleOeuvre(),
     titre: '',
+    fiche_declaration: ENVOI_VIDE,
     fichier: ENVOI_VIDE,
     attestation: ENVOI_VIDE,
   };
@@ -372,8 +392,9 @@ function oeuvresInitiales(oeuvres: OeuvreAdhesionEntree[]): OeuvreEnCours[] {
   const lignes: OeuvreEnCours[] = oeuvres.map((oeuvre) => ({
     cle: nouvelleCleOeuvre(),
     titre: oeuvre.titre,
-    fichier: envoiDepuisDepot(oeuvre.fichier),
-    attestation: envoiDepuisDepot(oeuvre.attestations[0]),
+    fiche_declaration: oeuvre.fiche_declaration ? envoiDepuisDepot(oeuvre.fiche_declaration) : ENVOI_VIDE,
+    fichier: oeuvre.fichier ? envoiDepuisDepot(oeuvre.fichier) : ENVOI_VIDE,
+    attestation: oeuvre.attestations.length > 0 ? envoiDepuisDepot(oeuvre.attestations[0]) : ENVOI_VIDE,
   }));
 
   while (lignes.length < NOMBRE_MINIMUM_OEUVRES) {
@@ -470,7 +491,7 @@ export default function DocumentsOeuvresScreen() {
     return liste;
   }, [envoisPieces, exigences]);
 
-  /** Œuvres complètes : titre + fichier + au moins une attestation de diffusion. */
+  /** Œuvres complètes : titre + fiche de déclaration + fichier + au moins une attestation de diffusion. */
   const oeuvresCompletes = useMemo<OeuvreAdhesionEntree[]>(() => {
     if (!categorieRetenue) {
       return [];
@@ -478,7 +499,10 @@ export default function DocumentsOeuvresScreen() {
     const liste: OeuvreAdhesionEntree[] = [];
     for (const oeuvre of oeuvres) {
       const titre = oeuvre.titre.trim();
-      if (!titre || oeuvre.fichier.statut !== 'reussi' || !oeuvre.fichier.depose) {
+      if (!titre || oeuvre.fiche_declaration.statut !== 'reussi' || !oeuvre.fiche_declaration.depose) {
+        continue;
+      }
+      if (oeuvre.fichier.statut !== 'reussi' || !oeuvre.fichier.depose) {
         continue;
       }
       const attestations: FichierDepose[] = [];
@@ -493,6 +517,7 @@ export default function DocumentsOeuvresScreen() {
         categorie_id: categorieRetenue.id,
         description: null,
         annee: null,
+        fiche_declaration: oeuvre.fiche_declaration.depose,
         fichier: oeuvre.fichier.depose,
         attestations,
       });
@@ -545,12 +570,18 @@ export default function DocumentsOeuvresScreen() {
       if (!oeuvre) {
         return ENVOI_VIDE;
       }
-      return cible.nature === 'oeuvre' ? oeuvre.fichier : oeuvre.attestation;
+      if (cible.nature === 'oeuvre') {
+        return oeuvre.fichier;
+      }
+      if (cible.nature === 'fiche_declaration') {
+        return oeuvre.fiche_declaration;
+      }
+      return oeuvre.attestation;
     },
     [envoisPieces, oeuvres],
   );
 
-  /** Applique une modification à l'envoi visé (pièce, fichier d'œuvre, attestation). */
+  /** Applique une modification à l'envoi visé (pièce, fichier d'œuvre, fiche de déclaration, attestation). */
   const definirEnvoi = useCallback((cible: CibleEnvoi, maj: Partial<EnvoiFichier>) => {
     if (cible.nature === 'piece') {
       setEnvoisPieces((precedent) => ({
@@ -564,9 +595,13 @@ export default function DocumentsOeuvresScreen() {
         if (oeuvre.cle !== cible.cle) {
           return oeuvre;
         }
-        return cible.nature === 'oeuvre'
-          ? { ...oeuvre, fichier: { ...oeuvre.fichier, ...maj } }
-          : { ...oeuvre, attestation: { ...oeuvre.attestation, ...maj } };
+        if (cible.nature === 'oeuvre') {
+          return { ...oeuvre, fichier: { ...oeuvre.fichier, ...maj } };
+        }
+        if (cible.nature === 'fiche_declaration') {
+          return { ...oeuvre, fiche_declaration: { ...oeuvre.fiche_declaration, ...maj } };
+        }
+        return { ...oeuvre, attestation: { ...oeuvre.attestation, ...maj } };
       }),
     );
   }, []);
@@ -859,6 +894,9 @@ export default function DocumentsOeuvresScreen() {
       if (!oeuvre.titre.trim()) {
         liste.push(`${nom} : indiquez le titre.`);
       }
+      if (oeuvre.fiche_declaration.statut !== 'reussi') {
+        liste.push(`${nom} : fiche de déclaration à envoyer.`);
+      }
       if (oeuvre.fichier.statut !== 'reussi') {
         liste.push(`${nom} : fichier de l’œuvre à envoyer.`);
       }
@@ -1014,6 +1052,23 @@ export default function DocumentsOeuvresScreen() {
             </View>
 
             <View className="mt-3 gap-3">
+              <UploadTile
+                libelle="Fiche de déclaration d’œuvre"
+                icone="file-text"
+                obligatoire
+                statut={oeuvre.fiche_declaration.statut}
+                nomFichier={nomFichierAffiche(oeuvre.fiche_declaration)}
+                progression={oeuvre.fiche_declaration.progression}
+                message={messageEnvoi(
+                  oeuvre.fiche_declaration,
+                  'Fiche de déclaration de l’œuvre (PDF).',
+                )}
+                onSelectionner={() => void selectionner({ nature: 'fiche_declaration', cle: oeuvre.cle })}
+                onReessayer={() => void reessayer({ nature: 'fiche_declaration', cle: oeuvre.cle })}
+                onRemplacer={() => void remplacer({ nature: 'fiche_declaration', cle: oeuvre.cle })}
+                onSupprimer={() => supprimer({ nature: 'fiche_declaration', cle: oeuvre.cle })}
+              />
+
               <UploadTile
                 libelle="Fichier de l’œuvre"
                 icone="file-audio"
