@@ -98,6 +98,17 @@ async function supabaseRequest(settings, path, { method = 'GET', body, prefer, f
   return data;
 }
 
+// === JOURNAUX TEMPORAIRES DE DIAGNOSTIC (à retirer après le diagnostic d'import) ===
+// Ne journalise que : méthode, chemin, présence OPTIONS/POST, statut, durée.
+// Jamais d'en-têtes d'authentification, de formulaires multipart, de noms de fichiers ni de corps.
+const _diagTemps = new Map();
+const _diagMethode = new Map();
+const _diagChemin = new Map();
+function _diagLog(methode, chemin, statut, dureeMs) {
+  console.log(`[OMDA-DIAG] ${methode} ${chemin} ${statut} ${dureeMs}ms`);
+}
+// === FIN JOURNAUX TEMPORAIRES ===
+
 const MAX_FICHIER_OCTETS = 20 * 1024 * 1024;
 const MAX_MULTIPART_OCTETS = MAX_FICHIER_OCTETS + 256 * 1024;
 const MIME_PAR_BUCKET = Object.freeze({
@@ -219,6 +230,15 @@ function validerSoumission(body) {
 }
 
 const json = (res, status, body) => {
+  const requestId = res.getHeader('x-request-id');
+  const debut = _diagTemps.get(requestId);
+  const duree = debut ? Date.now() - debut : 0;
+  const methode = _diagMethode.get(requestId) ?? '?';
+  const chemin = _diagChemin.get(requestId) ?? '/';
+  _diagLog(methode, chemin, status, duree);
+  _diagTemps.delete(requestId);
+  _diagMethode.delete(requestId);
+  _diagChemin.delete(requestId);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
@@ -277,6 +297,11 @@ export function createOmdaServer({ settings = config, logger = console, fetchImp
   const gerer = async (req, res) => {
     const requestId = randomUUID();
     res.setHeader('x-request-id', requestId);
+    const _debut = Date.now();
+    _diagTemps.set(requestId, _debut);
+    _diagMethode.set(requestId, req.method ?? '?');
+    _diagChemin.set(requestId, req.url ?? '/');
+    console.log(`[OMDA-DIAG] DEBUT ${req.method ?? '?'} ${req.url ?? '/'}`);
 
     const origin = req.headers.origin;
     if (origin && settings.allowedOrigins.includes(origin)) {
@@ -289,6 +314,12 @@ export function createOmdaServer({ settings = config, logger = console, fetchImp
     }
 
     if (req.method === 'OPTIONS') {
+      const requestIdO = res.getHeader('x-request-id');
+      const debutO = _diagTemps.get(requestIdO) ?? Date.now();
+      _diagLog(req.method ?? '?', req.url ?? '/', 204, Date.now() - debutO);
+      _diagTemps.delete(requestIdO);
+      _diagMethode.delete(requestIdO);
+      _diagChemin.delete(requestIdO);
       res.writeHead(204);
       return res.end();
     }

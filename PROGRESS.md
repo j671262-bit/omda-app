@@ -29,15 +29,40 @@ Cause recherchée :
   - schéma respecté : pièces PDF/JPEG/PNG, max 20 Mo.
 - Aucune régression côté client n'a été établie. `HttpCandidateApi.ts` est inchangé depuis `2dc4a28` et identique à l'implémentation de référence décrite dans la worktree (ÉTAPE 27). Les écrans appellent bien `candidateApi.televerserFichier` et traduisent les erreurs en français.
 - Le message « impossible de joindre le serveur » provient exclusivement de `XMLHttpRequest.onerror` / `ontimeout` dans `televerserFichier`. Comme le serveur est lancé et que les contrats client/serveur correspondent, ce `reseau` indique un échec de transport (requête qui n'atteint pas le serveur ou réponse illisible), d'origine environnementale (ex. `CORS_ALLOWED_ORIGINS` ne listant pas l'origine cliente, préflight CORS bloqué sur les en-têtes `x-numero-dossier` / `x-code-suivi`, ou `EXPO_PUBLIC_API_BASE_URL` inaccessible depuis l'app) et non un défaut de code client corrigible par édition.
-- Aucun fichier n'a été modifié : aucune cause établie côté client → aucune correction appliquée, conformément à « corrige uniquement la cause établie » (pas de fallback mock, aucune valeur `.env` exposée).
+- Aucune correction de code client n'a été appliquée (aucune cause établie). Aucun fallback mock n'a été ajouté.
+
+Journaux temporaires ajoutés côté serveur (`server/src/server.mjs`) :
+- Journaux expurgés indiquant uniquement : méthode, chemin, statut HTTP, durée. Jamais d'en-têtes d'authentification, de formulaires multipart, de noms de fichiers ni de corps de requêtes.
+- Log `DEBUT` au début de chaque requête, log `FIN` automatique via `json()`, et log dédié pour le préflight `OPTIONS`.
+- Ces journaux doivent être retirés après le diagnostic.
 
 Vérification :
-- `npx tsc --noEmit` → 0 erreur (LASTEXITCODE=0).
+- `node --check server/src/server.mjs` → syntaxe valide (0 erreur)
+- `npx tsc --noEmit` → 0 erreur (LASTEXITCODE=0)
 
 Étapes restantes pour retester l'import :
 1. Vérifier que `EXPO_PUBLIC_API_BASE_URL` pointe vers le serveur Express lancé.
 2. Vérifier que `CORS_ALLOWED_ORIGINS` autorise l'origine de l'app (préflight CORS + en-têtes personnalisés `x-numero-dossier` / `x-code-suivi`).
-3. Tester l'import d'une pièce (CIN / certificat de résidence) sur émulateur ou appareil avec le serveur lancé.
-4. Confirmer que l'upload retourne 201 et que l'écran affiche « Fichier accepté » ; en cas d'échec, relever le type d'erreur (`reseau` / `metier` / `serveur`) et le code serveur.
+3. Redémarrer le serveur Express avec les journaux temporaires activés.
+4. Tester l'import d'une pièce (CIN / certificat de résidence) sur émulateur ou appareil avec le serveur lancé.
+5. Relever les journaux `[OMDA-DIAG]` dans le terminal serveur : aucune requête / OPTIONS seul / POST avec statut d'erreur / POST 201.
+6. Confirmer que l'upload retourne 201 et que l'écran affiche « Fichier accepté » ; en cas d'échec, relever le type d'erreur (`reseau` / `metier` / `serveur`) et le code serveur.
 
-Statut : non retesté avec succès sur appareil — « Diagnostic effectué : aucune régression côté client établie ; retest sur appareil requis ».
+Diagnostic conditionnel (à confirmer par les observations serveur) :
+- Aucune requête reçue dans les journaux serveur → connectivité, adresse IP, interface réseau d'écoute du serveur ou pare-feu ; l'URL compilée dans l'app doit pointer vers le serveur joignable depuis la plateforme cible (téléphone physique, émulateur Android, simulateur iOS ou Expo Web) — une requête réussie depuis l'ordinateur ne prouve pas que l'appareil peut joindre le serveur
+- OPTIONS reçu sans POST, sur Expo Web → préflight CORS (origine non listée dans `CORS_ALLOWED_ORIGINS` ou en-têtes personnalisés `x-numero-dossier` / `x-code-suivi` non autorisés)
+- POST reçu avec un statut d'erreur HTTP → traiter le code et le message serveur (`metier` pour 4xx, `serveur` pour 5xx), ne pas présenter comme une panne réseau
+- POST réussi (201) mais échec affiché → vérifier la lecture de la réponse (`classerReponse` + `SCHEMA_FICHIER_TELEVERSE`) et la mise à jour de l'écran (`definirEnvoi`)
+
+Statut : non retesté avec succès sur appareil — « Diagnostic en cours : journaux temporaires ajoutés côté serveur ; retest sur appareil requis ».
+
+## Nouvelle règle métier (à documenter, non implémentée dans cette tâche)
+- Pour l'adhésion à une nouvelle catégorie, chaque œuvre doit avoir une attestation de diffusion et une fiche de déclaration propre à la catégorie.
+- Pour un membre existant qui ajoute une œuvre, la fiche de déclaration reste obligatoire et l'attestation devient facultative.
+- Le mode d'intégration des fiches de déclaration n'est pas encore décidé (formulaire officiel rempli vs formulaire numérique spécifique à chaque catégorie).
+- Le schéma actuel ne comporte pas de relation explicitement dédiée à cette fiche. Ne détourner pas un champ existant sans confirmer son rôle et ne créer pas de migration dans cette tâche.
+- Décision à prendre : import d'un formulaire officiel rempli ou formulaire numérique spécifique à chaque catégorie.
+
+## Fichiers modifiés dans cette tâche
+- `server/src/server.mjs` : ajout de journaux temporaires expurgés de diagnostic (méthode, chemin, statut, durée uniquement) ; aucune logique métier modifiée, aucun contrôle d'authentification retiré, aucun fallback mock ajouté
+- `PROGRESS.md` : mise à jour de l'avancement (ce fichier)
