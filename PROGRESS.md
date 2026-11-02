@@ -6,7 +6,7 @@
 - Couche data : `src/services/http/HttpCandidateApi.ts` (API REST Express, singleton via `src/services/factory.ts`, aucun mock, aucun repli)
 - Contrat : `docs/API_CANDIDAT.md` (v1.1)
 
-## [02/11/2026] — Diagnostic : régression import des pièces (CIN, certificat de résidence, etc.)
+## [02/11/2026] — Diagnostic : régression import des pièces (CIN, certificat de résidence, etc.) — complément Expo Go Android
 Problème signalé : l'import d'une pièce affiche « Impossible de joindre le serveur » (type d'erreur `reseau`), alors que le serveur est lancé.
 
 Chaîne d'import auditée (sélection → validation → requête → client → endpoint → réponse → écran) :
@@ -18,43 +18,77 @@ Chaîne d'import auditée (sélection → validation → requête → client →
 - lecture : `classerReponse` + `SCHEMA_FICHIER_TELEVERSE`
 - écran : `messageErreurEnvoi` → `definirEnvoi({ statut: 'erreur', erreur })`
 
-Cause recherchée :
-- Le code client est CONFORME au contrat `docs/API_CANDIDAT.md` (§1, §2, §5.3, §9) :
-  - URL construite avec le préfixe `/v1` ajouté une seule fois (`urlDepuisChemin`) ;
-  - aucun `JSON.stringify` du `FormData`, aucun `Content-Type: application/json` appliqué à l'upload, aucun en-tête `multipart/form-data` imposé ;
-  - format fichier Expo/React Native `{ uri, name, type }` conservé ;
-  - délai d'attente de 120 s pour le téléversement ;
-  - mapping des erreurs : HTTP 4xx avec enveloppe → `metier`, 5xx → `serveur`, absence de réponse / timeout → `reseau` (aucune 4xx/5xx n'est transformée en « serveur injoignable ») ;
-  - pas de repli sur un mock (`factory.ts` instancie le vrai `HttpCandidateApi`) ;
-  - schéma respecté : pièces PDF/JPEG/PNG, max 20 Mo.
-- Aucune régression côté client n'a été établie. `HttpCandidateApi.ts` est inchangé depuis `2dc4a28` et identique à l'implémentation de référence décrite dans la worktree (ÉTAPE 27). Les écrans appellent bien `candidateApi.televerserFichier` et traduisent les erreurs en français.
-- Le message « impossible de joindre le serveur » provient exclusivement de `XMLHttpRequest.onerror` / `ontimeout` dans `televerserFichier`. Comme le serveur est lancé et que les contrats client/serveur correspondent, ce `reseau` indique un échec de transport (requête qui n'atteint pas le serveur ou réponse illisible), d'origine environnementale (ex. `CORS_ALLOWED_ORIGINS` ne listant pas l'origine cliente, préflight CORS bloqué sur les en-têtes `x-numero-dossier` / `x-code-suivi`, ou `EXPO_PUBLIC_API_BASE_URL` inaccessible depuis l'app) et non un défaut de code client corrigible par édition.
-- Aucune correction de code client n'a été appliquée (aucune cause établie). Aucun fallback mock n'a été ajouté.
+### 1. Ordre réel des opérations (écran étape 3 → `POST /v1/fichiers`)
+- Sélection du fichier → `selectionner()` → `televerser()`
+- Si `brouillon.numero_dossier` / `brouillon.code_suivi` absents → `candidateApi.creerDemande()` (POST `/v1/demandes`) crée le brouillon et définit `this.contexteDossier` dans `HttpCandidateApi`
+- Sinon → `mettreAJourDemande()` réhydrate le contexte mémoire
+- Puis `candidateApi.televerserFichier()` → XHR POST `BASE_URL/v1/fichiers` avec `FormData` (`bucket`, `chemin_stockage`, `fichier {uri,name,type}`)
+- En-têtes : `Accept: application/json` + `X-Numero-Dossier` / `X-Code-Suivi` via `enTetesContexte()` (vide `{}` si aucun contexte)
 
-Journaux temporaires ajoutés côté serveur (`server/src/server.mjs`) :
-- Journaux expurgés indiquant uniquement : méthode, chemin, statut HTTP, durée. Jamais d'en-têtes d'authentification, de formulaires multipart, de noms de fichiers ni de corps de requêtes.
-- Log `DEBUT` au début de chaque requête, log `FIN` automatique via `json()`, et log dédié pour le préflight `OPTIONS`.
-- Ces journaux doivent être retirés après le diagnostic.
+### 2. Disponibilité et transmission de `numero_dossier` et `codeSuivi`
+- Disponibles après `creerDemande()` ou `mettreAJourDemande()`, stockés dans `this.contexteDossier` du singleton `HttpCandidateApi`
+- Transmis dans `enTetesContexte()` au moment de l'upload via `requete.setRequestHeader()`
+- Si le contexte n'est pas défini (mémoire vide après redémarrage), `enTetesContexte()` retourne `{}` et l'upload est envoyé sans en-têtes d'authentification → serveur répond 401 (traitée comme `metier`, PAS comme `reseau`)
+
+### 3. Exigences de la route serveur `POST /v1/fichiers`
+- Exige `x-numero-dossier` et `x-code-suivi` (401 `CODE_SUIVI_INVALIDE` sinon)
+- Exige `multipart/form-data` (415 sinon)
+- Valide `bucket`, `chemin_stockage`, `fichier` (422 sinon)
+
+### 4. Compatibilité contrat v1.1
+- Le contrat §5.3 indique "dépôt PRÉALABLE à la création du dossier" — cette formulation est confuse
+- Le serveur exige en réalité `x-numero-dossier` + `x-code-suivi` AVANT tout upload
+- L'implémentation crée le brouillon AVANT l'upload : c'est compatible avec la route serveur, mais le commentaire du contrat est ambigu
+- Aucune contradiction bloquante dans le code actuel ; pas de contournement de sécurité
+
+### 5. Plateforme Expo Go sur Android — risques spécifiques
+- `localhost` ne fonctionne PAS depuis Expo Go sur un appareil physique : il faut l'adresse IP LAN du poste exécutant le serveur
+- `EXPO_PUBLIC_API_BASE_URL` doit pointer vers `http://<IP_LAN>:<port>` (valeur non affichée ici)
+- Les requêtes HTTP (non HTTPS) vers une adresse IP locale sur Android peuvent être bloquées si `usesCleartextTraffic` n'est pas autorisé dans le manifeste
+- CORS : le serveur vérifie `settings.allowedOrigins` ; si l'origine d'Expo Go (`http://<IP_LAN>:19000` ou similaire) n'est pas listée, le préflight `OPTIONS` échouera et la réponse pourra être masquée côté client (apparence `onerror`)
+
+### 6. Base URL utilisée par le client
+- Lue statiquement depuis `process.env.EXPO_PUBLIC_API_BASE_URL` (substituée par Expo au build)
+- Garde-fou : si vide, `televerserFichier()` renvoie `serveur` sans appel réseau
+- Valeur non affichée dans ce rapport
+
+### 7. Traitement des événements XHR (diagnostic temporaire ajouté)
+- `onload` → statut HTTP lu, réponse JSON validée ; si 4xx/5xx → `metier`/`serveur` (jamais `reseau`)
+- `onerror` → `erreurReseau` (« aucune réponse du serveur »)
+- `ontimeout` → `erreurReseau` (120 s)
+- `onabort` → `refusAnnulation` (métier `TELEVERSEMENT_ANNULE`)
+- Logs temporaires ajoutés : événement XHR, statut, durée, plateforme, chemin `/fichiers` — aucune donnée de fichier, aucun en-tête sensible
+
+### Journaux temporaires ajoutés côté app (`src/services/http/HttpCandidateApi.ts`)
+- `_diagLog` : événement XHR (`demarrage`/`onload`/`onerror`/`ontimeout`/`onabort`), statut HTTP, durée, plateforme (`Platform.OS`), chemin `/fichiers`
+- Cas `API_BASE_URL === ''` : log `motif=API_BASE_URL_non_configurable`
+- Aucun header, corps multipart, nom de fichier ou donnée personnelle journalisé
+
+### Journaux temporaires ajoutés côté serveur (`server/src/server.mjs`)
+- Méthode, chemin, statut, durée uniquement ; jamais d'en-tête, corps multipart ou fichier
 
 Vérification :
 - `node --check server/src/server.mjs` → syntaxe valide (0 erreur)
-- `npx tsc --noEmit` → 0 erreur (LASTEXITCODE=0)
+- `npx tsc --noEmit` → 0 erreur
 
-Étapes restantes pour retester l'import :
-1. Vérifier que `EXPO_PUBLIC_API_BASE_URL` pointe vers le serveur Express lancé.
-2. Vérifier que `CORS_ALLOWED_ORIGINS` autorise l'origine de l'app (préflight CORS + en-têtes personnalisés `x-numero-dossier` / `x-code-suivi`).
-3. Redémarrer le serveur Express avec les journaux temporaires activés.
-4. Tester l'import d'une pièce (CIN / certificat de résidence) sur émulateur ou appareil avec le serveur lancé.
-5. Relever les journaux `[OMDA-DIAG]` dans le terminal serveur : aucune requête / OPTIONS seul / POST avec statut d'erreur / POST 201.
-6. Confirmer que l'upload retourne 201 et que l'écran affiche « Fichier accepté » ; en cas d'échec, relever le type d'erreur (`reseau` / `metier` / `serveur`) et le code serveur.
-
-Diagnostic conditionnel (à confirmer par les observations serveur) :
-- Aucune requête reçue dans les journaux serveur → connectivité, adresse IP, interface réseau d'écoute du serveur ou pare-feu ; l'URL compilée dans l'app doit pointer vers le serveur joignable depuis la plateforme cible (téléphone physique, émulateur Android, simulateur iOS ou Expo Web) — une requête réussie depuis l'ordinateur ne prouve pas que l'appareil peut joindre le serveur
-- OPTIONS reçu sans POST, sur Expo Web → préflight CORS (origine non listée dans `CORS_ALLOWED_ORIGINS` ou en-têtes personnalisés `x-numero-dossier` / `x-code-suivi` non autorisés)
+Diagnostic conditionnel (à confirmer par les observations) :
+- Aucune requête reçue dans les journaux serveur → connectivité, adresse IP, interface réseau d'écoute du serveur ou pare-feu ; l'URL compilée dans l'app doit pointer vers le serveur joignable depuis Expo Go Android — une requête réussie depuis l'ordinateur ne prouve pas que l'appareil peut joindre le serveur
+- OPTIONS reçu sans POST sur Expo Go Android → préflight CORS (origine non listée dans `CORS_ALLOWED_ORIGINS` ou en-têtes personnalisés `x-numero-dossier` / `x-code-suivi` non autorisés)
 - POST reçu avec un statut d'erreur HTTP → traiter le code et le message serveur (`metier` pour 4xx, `serveur` pour 5xx), ne pas présenter comme une panne réseau
 - POST réussi (201) mais échec affiché → vérifier la lecture de la réponse (`classerReponse` + `SCHEMA_FICHIER_TELEVERSE`) et la mise à jour de l'écran (`definirEnvoi`)
+- Client : `onerror` / `ontimeout` = échec de transport (`reseau`) ; `onload` avec statut 4xx/5xx = réponse serveur reçue (jamais `reseau`)
 
-Statut : non retesté avec succès sur appareil — « Diagnostic en cours : journaux temporaires ajoutés côté serveur ; retest sur appareil requis ».
+Statut : non retesté avec succès sur appareil — « Diagnostic en cours : journaux temporaires ajoutés côté app (HttpCandidateApi.ts) et serveur ; retest sur Expo Go Android requis ».
+
+Étapes restantes pour retester l'import :
+1. Vérifier que `EXPO_PUBLIC_API_BASE_URL` pointe vers l'adresse IP LAN du serveur (joignable depuis l'appareil Android, pas seulement `localhost`)
+2. Vérifier que `CORS_ALLOWED_ORIGINS` autorise l'origine d'Expo Go (préflight CORS + en-têtes personnalisés `x-numero-dossier` / `x-code-suivi`)
+3. Redémarrer le serveur Express avec les journaux temporaires activés
+4. Relancer l'app sur Expo Go Android avec les diagnostics côté app activés
+5. Aller à l'étape 3 « Documents et œuvres » et sélectionner une pièce (ex. CIN)
+6. Relever dans le terminal Metro (app) : logs `[OMDA-DIAG] XHR …` (événement, statut, durée, plateforme)
+7. Relever dans le terminal serveur : logs `[OMDA-DIAG]` (aucune requête / OPTIONS seul / POST avec statut)
+8. Confirmer le retour 201 et l'affichage « Fichier accepté », ou relever le type d'erreur (`reseau` / `metier` / `serveur`) et le code serveur
 
 ## Nouvelle règle métier (à documenter, non implémentée dans cette tâche)
 - Pour l'adhésion à une nouvelle catégorie, chaque œuvre doit avoir une attestation de diffusion et une fiche de déclaration propre à la catégorie.
@@ -64,5 +98,6 @@ Statut : non retesté avec succès sur appareil — « Diagnostic en cours : jou
 - Décision à prendre : import d'un formulaire officiel rempli ou formulaire numérique spécifique à chaque catégorie.
 
 ## Fichiers modifiés dans cette tâche
+- `src/services/http/HttpCandidateApi.ts` : ajout de diagnostics temporaires expurgés (événement XHR, statut, durée, plateforme, chemin) ; aucune logique métier modifiée, aucun contrôle d'authentification retiré, aucun fallback mock ajouté
 - `server/src/server.mjs` : ajout de journaux temporaires expurgés de diagnostic (méthode, chemin, statut, durée uniquement) ; aucune logique métier modifiée, aucun contrôle d'authentification retiré, aucun fallback mock ajouté
 - `PROGRESS.md` : mise à jour de l'avancement (ce fichier)

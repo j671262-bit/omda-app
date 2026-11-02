@@ -607,6 +607,14 @@ export class HttpCandidateApi implements CandidateApi {
     options?: OptionsTeleversement,
   ): Promise<Result<FichierTeleverse>> {
     if (API_BASE_URL === '') {
+      try {
+        const { Platform } = require('react-native');
+        console.log(
+          `[OMDA-DIAG] XHR demarrage /fichiers statut=- duree=0ms plateforme=${Platform.OS} motif=API_BASE_URL_non_configurable`,
+        );
+      } catch {
+        /* diagnostic non bloquant */
+      }
       return erreurServeur({ message: MESSAGE_API_NON_CONFIGURE });
     }
     const mimesAutorises = TYPES_MIME_AUTORISES[entree.bucket] as readonly string[];
@@ -640,6 +648,21 @@ export class HttpCandidateApi implements CandidateApi {
         resolve(resultat);
       };
 
+      const debutTeleversement = Date.now();
+      // Diagnostic temporaire (à retirer après le diagnostic d'import) :
+      // événement XHR, statut HTTP, durée, plateforme, chemin de route.
+      // Aucune donnée du fichier, aucun en-tête sensible, aucun code de suivi.
+      const _diagLog = (evenement: string, statut?: number) => {
+        try {
+          const { Platform } = require('react-native');
+          console.log(
+            `[OMDA-DIAG] XHR ${evenement} /fichiers statut=${statut ?? '-'} duree=${Date.now() - debutTeleversement}ms plateforme=${Platform.OS}`,
+          );
+        } catch {
+          /* diagnostic non bloquant */
+        }
+      };
+
       requete.upload.onprogress = (evenement) => {
         if (evenement.lengthComputable && evenement.total > 0) {
           const pourcentage = Math.min(99, Math.round((evenement.loaded / evenement.total) * 100));
@@ -647,6 +670,7 @@ export class HttpCandidateApi implements CandidateApi {
         }
       };
       requete.onload = () => {
+        _diagLog('onload', requete.status);
         const reponse = classerReponse(requete.status, requete.responseText);
         if (!reponse.ok) {
           conclure(reponse);
@@ -667,13 +691,24 @@ export class HttpCandidateApi implements CandidateApi {
           }),
         );
       };
-      requete.onerror = () =>
+      requete.onerror = () => {
+        _diagLog('onerror');
         conclure(erreurReseau('téléversement interrompu (aucune réponse du serveur)'));
-      requete.ontimeout = () =>
+      };
+      requete.ontimeout = () => {
+        _diagLog('ontimeout');
         conclure(erreurReseau(`délai dépassé après ${DELAI_TIMEOUT_TELEVERSEMENT_MS} ms`));
-      requete.onabort = () => conclure(refusAnnulation());
+      };
+      requete.onabort = () => {
+        _diagLog('onabort');
+        conclure(refusAnnulation());
+      };
 
       try {
+        const { Platform } = require('react-native');
+        console.log(
+          `[OMDA-DIAG] XHR demarrage /fichiers statut=- duree=0ms plateforme=${Platform.OS} motif=envoi`,
+        );
         requete.open('POST', urlDepuisChemin('/fichiers'));
         requete.timeout = DELAI_TIMEOUT_TELEVERSEMENT_MS;
         requete.setRequestHeader('Accept', 'application/json');
