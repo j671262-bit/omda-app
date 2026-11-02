@@ -41,6 +41,17 @@ Chaîne d'import auditée (sélection → validation → requête → client →
 - L'implémentation crée le brouillon AVANT l'upload : c'est compatible avec la route serveur, mais le commentaire du contrat est ambigu
 - Aucune contradiction bloquante dans le code actuel ; pas de contournement de sécurité
 
+### Constat instrumentation serveur
+- Un journal global existe déjà dans `gerer()` (`server/src/server.mjs`) : log `[OMDA-DIAG] DEBUT <méthode> <chemin>` placé **avant CORS et avant les routes**, et log de fin automatique via `json()` (méthode, chemin, statut, durée). Il trace `OPTIONS` comme les autres requêtes.
+- Ce journal ne journalise aucun header, corps multipart, nom de fichier ou donnée personnelle.
+- Le silence du terminal serveur après un essai d'import **n'est pas significatif** tant que ce journal n'a pas été confirmé actif au démarrage du serveur : une requête qui n'atteint pas le serveur ne produit aucun log.
+- La route `/v1/categories` n'existe pas dans ce serveur. La route publique simple pour vérifier l'instrumentation est `GET /health`.
+
+### Constat URL construite côté app
+- L'URL de l'upload est construite par `urlDepuisChemin('/fichiers')` = `API_BASE_URL.replace(/\/+$/, '') + '/v1' + '/fichiers'`.
+- `API_BASE_URL` est lue statiquement depuis `process.env.EXPO_PUBLIC_API_BASE_URL` (substituée par Expo au build).
+- La valeur de `.env` n'est pas affichée dans ce rapport.
+
 ### 5. Plateforme Expo Go sur Android — risques spécifiques
 - `localhost` ne fonctionne PAS depuis Expo Go sur un appareil physique : il faut l'adresse IP LAN du poste exécutant le serveur
 - `EXPO_PUBLIC_API_BASE_URL` doit pointer vers `http://<IP_LAN>:<port>` (valeur non affichée ici)
