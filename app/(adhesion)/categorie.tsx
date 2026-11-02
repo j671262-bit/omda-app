@@ -2,10 +2,12 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import type { ErreurApp } from '../../src/services/contracts';
 import {
   Button,
   EmptyState,
   ErrorState,
+  InfoBanner,
   Icone,
   LoadingState,
   ScreenContainer,
@@ -16,6 +18,7 @@ import type { Categorie } from '../../src/models';
 import { candidateApi, publicContentService } from '../../src/services/factory';
 
 type EtatChargement = 'chargement' | 'erreur' | 'vide' | 'contenu';
+type EtatEnvoi = 'inactif' | 'enCours' | 'erreur';
 
 /**
  * Étape 2 — Catégorie (écran I du cahier des charges).
@@ -33,16 +36,21 @@ type EtatChargement = 'chargement' | 'erreur' | 'vide' | 'contenu';
 export default function CategorieScreen() {
   const { brouillon, definirCategorie, definirIdentifiantsDossier, identiteEstValide } = useAdhesionDraft();
 
-  const [etat, setEtat] = useState<EtatChargement>('chargement');
+  // Chargement des catégories (écran) — indépendant de l'envoi du dossier.
+  const [etatCategories, setEtatCategories] = useState<EtatChargement>('chargement');
   const [categories, setCategories] = useState<Categorie[]>([]);
-  const [messageErreur, setMessageErreur] = useState<string>('');
+  const [messageErreurCategories, setMessageErreurCategories] = useState<string>('');
+
+  // Envoi du dossier (création / mise à jour du brouillon côté serveur).
+  const [etatEnvoi, setEtatEnvoi] = useState<EtatEnvoi>('inactif');
+  const [messageErreurEnvoi, setMessageErreurEnvoi] = useState<string>('');
   const [tentativeValidation, setTentativeValidation] = useState(false);
 
   const categorieSelectionnee = brouillon.categorie_id;
 
   const chargerCategories = useCallback(async () => {
-    setEtat('chargement');
-    setMessageErreur('');
+    setEtatCategories('chargement');
+    setMessageErreurCategories('');
 
     const resultat = await publicContentService.listerCategories();
 
@@ -51,35 +59,51 @@ export default function CategorieScreen() {
         resultat.erreur.type === 'reseau'
           ? 'Impossible de joindre le serveur OMDA. Vérifiez votre connexion Internet et réessayez.'
           : 'Le service des catégories d’adhésion est momentanément indisponible.';
-      setMessageErreur(message);
-      setEtat('erreur');
+      setMessageErreurCategories(message);
+      setEtatCategories('erreur');
       return;
     }
 
     if (resultat.valeur.length === 0) {
       setCategories([]);
-      setEtat('vide');
+      setEtatCategories('vide');
       return;
     }
 
     setCategories(resultat.valeur);
-    setEtat('contenu');
+    setEtatCategories('contenu');
   }, []);
 
   useEffect(() => {
     void chargerCategories();
   }, [chargerCategories]);
 
+  /**
+   * Message utilisateur pour une erreur d'envoi, selon la famille d'erreur.
+   * Les règles métier et le contrat `CandidateApi` ne sont pas modifiés.
+   */
+  function messagePourErreurEnvoi(erreur: ErreurApp): string {
+    if (erreur.type === 'reseau') {
+      return 'Impossible de joindre le serveur OMDA. Vérifiez votre connexion Internet puis réessayez.';
+    }
+    if (erreur.type === 'metier') {
+      return erreur.message;
+    }
+    return 'Le service est momentanément indisponible. Réessayez dans un instant.';
+  }
+
   const continuer = useCallback(async () => {
     setTentativeValidation(true);
-    setMessageErreur('');
+    setMessageErreurEnvoi('');
     if (!categorieSelectionnee) {
       return;
     }
     if (!identiteEstValide) {
-      setMessageErreur('Veuillez compléter votre identité (y compris le pseudonyme) avant de continuer.');
+      setMessageErreurEnvoi('Veuillez compléter votre identité (y compris le pseudonyme) avant de continuer.');
       return;
     }
+
+    setEtatEnvoi('enCours');
 
     const identite = brouillon.identite;
     const demandeEntree = {
@@ -101,8 +125,8 @@ export default function CategorieScreen() {
         // Créer le brouillon côté serveur AVANT tout upload (POST /v1/demandes).
         const creation = await candidateApi.creerDemande(demandeEntree);
         if (!creation.ok) {
-          setMessageErreur(creation.erreur.message || 'Impossible de créer le brouillon de demande.');
-          setEtat('erreur');
+          setMessageErreurEnvoi(messagePourErreurEnvoi(creation.erreur));
+          setEtatEnvoi('erreur');
           return;
         }
         await definirIdentifiantsDossier(
@@ -118,19 +142,19 @@ export default function CategorieScreen() {
           { identite: demandeEntree.identite, categorie_id: categorieSelectionnee },
         );
         if (!miseAJour.ok) {
-          setMessageErreur(miseAJour.erreur.message || 'Impossible de mettre à jour le brouillon.');
-          setEtat('erreur');
+          setMessageErreurEnvoi(messagePourErreurEnvoi(miseAJour.erreur));
+          setEtatEnvoi('erreur');
           return;
         }
       }
       router.push('/(adhesion)/documents-oeuvres');
     } catch {
-      setMessageErreur('Une erreur est survenue. Veuillez réessayer.');
-      setEtat('erreur');
+      setMessageErreurEnvoi('Une erreur est survenue. Veuillez réessayer.');
+      setEtatEnvoi('erreur');
     }
-  }, [brouillon, categorieSelectionnee, identiteEstValide, definirIdentifiantsDossier, candidateApi]);
+  }, [brouillon, categorieSelectionnee, identiteEstValide, definirIdentifiantsDossier]);
 
-  if (etat === 'chargement') {
+  if (etatCategories === 'chargement') {
     return (
       <ScreenContainer titre="Catégorie" sousTitre="Demande d’adhésion">
         <StepProgress etapeCourante={2} />
@@ -139,20 +163,20 @@ export default function CategorieScreen() {
     );
   }
 
-  if (etat === 'erreur') {
+  if (etatCategories === 'erreur') {
     return (
       <ScreenContainer titre="Catégorie" sousTitre="Demande d’adhésion">
         <StepProgress etapeCourante={2} />
         <ErrorState
           titre="Catégories indisponibles"
-          message={messageErreur}
+          message={messageErreurCategories}
           onReessayer={() => void chargerCategories()}
         />
       </ScreenContainer>
     );
   }
 
-  if (etat === 'vide') {
+  if (etatCategories === 'vide') {
     return (
       <ScreenContainer titre="Catégorie" sousTitre="Demande d’adhésion">
         <StepProgress etapeCourante={2} />
@@ -183,6 +207,15 @@ export default function CategorieScreen() {
           <Icone nom="circle-xmark" taille={16} classeCouleur="text-status-error" />
           <Text className="ml-2 flex-1 text-sm font-semibold text-status-error">
             Veuillez choisir une catégorie avant de continuer.
+          </Text>
+        </View>
+      ) : null}
+
+      {messageErreurEnvoi && etatEnvoi === 'inactif' ? (
+        <View className="mt-4 flex-row items-center rounded-xl border border-status-error bg-omda-white p-3">
+          <Icone nom="circle-xmark" taille={16} classeCouleur="text-status-error" />
+          <Text className="ml-2 flex-1 text-sm font-semibold text-status-error">
+            {messageErreurEnvoi}
           </Text>
         </View>
       ) : null}
@@ -248,11 +281,23 @@ export default function CategorieScreen() {
         })}
       </View>
 
+      {etatEnvoi === 'erreur' ? (
+        <InfoBanner
+          variante="error"
+          titre="Envoi impossible"
+          message={messageErreurEnvoi}
+          actionLibelle="Réessayer"
+          onAction={() => void continuer()}
+        />
+      ) : null}
+
       <View className="mt-8 gap-3">
         <Button
           libelle="Continuer vers les documents"
           pleineLargeur
           onPress={continuer}
+          chargement={etatEnvoi === 'enCours'}
+          desactive={etatEnvoi === 'enCours'}
         />
         <Button
           libelle="Retour à l’identité"

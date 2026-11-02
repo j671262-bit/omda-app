@@ -1,3 +1,47 @@
+- CORRECTIF — ERREUR D'ENVOI AFFICHANT TORT « CATÉGORIES INDISPONIBLES » (`app/(adhesion)/categorie.tsx`) :
+  1. `app/(adhesion)/categorie.tsx` — séparation des états de chargement et d'envoi :
+      - Deux états distincts : `etatCategories` (`chargement` / `erreur` / `vide` / `contenu`) pour l'affichage des catégories, et `etatEnvoi` (`inactif` / `enCours` / `erreur`) pour l'envoi du dossier. Une erreur de création/mise à jour du dossier ne bascule plus l'écran entier en « Catégories indisponibles » ; les catégories et la catégorie sélectionnée restent affichées.
+      - En cas d'échec d'envoi, un `InfoBanner` d'erreur (`variante="error"`) s'affiche au-dessus du bouton « Continuer vers les documents » avec un message selon le type d'erreur :
+        * `reseau` : « Impossible de joindre le serveur OMDA. Vérifiez votre connexion Internet puis réessayez. » ;
+        * `metier` (ex. 409 CIN/e-mail déjà utilisé) : message du serveur (`erreur.message`) ;
+        * `serveur` : « Le service est momentanément indisponible. Réessayez dans un instant. »
+      - Le bandeau comporte un bouton « Réessayer » qui relance uniquement l'envoi (`continuer()`), sans recharger les catégories.
+      - Pendant l'envoi (`etatEnvoi === 'enCours'`), le bouton « Continuer vers les documents » est en chargement et désactivé (props `chargement` + `desactive` de `Button`) pour empêcher toute double création de dossier.
+      - Tableau de dépendances du `useCallback` de `continuer()` corrigé : `candidateApi` est un import de module, retiré des dépendances.
+      - Aucune règle métier, aucun contrat `CandidateApi` et aucun changement serveur.
+  2. `docs/PROGRESS.md` — cette entrée.
+
+  Règles métier : non modifiées (pas de nouveau champ, pas de changement de comportement métier, contrat et serveur intacts).
+
+  Vérification `npx tsc --noEmit` : `app/(adhesion)/categorie.tsx` compile sans erreur. Les 3 erreurs restantes sont pré-existantes et sans rapport (`app/(membre)/demander-categorie-oeuvres.tsx` et `app/(membre)/depot-oeuvre.tsx`, champ `fiche_declaration` manquant — déjà documenté comme point en attente).
+
+
+- ÉTAPE 13 — DEMANDE DE CATÉGORIE SUPPLÉMENTAIRE (aucun fichier code modifié — aucune modification nécessaire, contrainte ÉTAPE 00 respectée) :
+  1. `demander-categorie-oeuvres.tsx` — lecture uniquement :
+     - L'écran gère la sélection de catégorie via `demanderCategorieSupplementaireAvecOeuvres`
+     - Le pseudonyme du membre est réutilisé (via `AdhesionDraft`/`AdhesionDraftContext`)
+     - L'écran valide les 2 œuvres minimales avec titre, fichier et attestation
+     - La catégorie doit être `ACTIVE` et non déjà demandée
+  2. `src/services/contracts/memberRepository.ts` — lecture uniquement :
+     - `demanderCategorieSupplementaireAvecOeuvres(entree)` utilise `OeuvreDemandeCategorieEntree` qui inclut `fiche_declaration` et `attestation` par œuvre
+     - La validation côté serveur vérifie `pseudonyme`, `fiche_declaration` par œuvre, `attestation` par œuvre
+     - La règle métier 3 (cas B) s'applique : attestation obligatoire pour catégorie supplémentaire
+  3. `docs/PROGRESS.md` — cette entrée.
+
+  Règles métier appliquées :
+  - Règle 1 : pseudonyme réutilisé depuis l'adhésion (déjà implémenté Étape 02)
+  - Règle 2 : fiche de déclaration obligatoire par œuvre (déjà implémenté Étape 04)
+  - Règle 3 : attestation obligatoire pour catégorie supplémentaire (Cas B), non obligatoire pour dépôt en catégorie déjà détenue (Cas C)
+  - Règle 4 : distinction stricte fiche de déclaration / attestation / autres documents
+  - Règle 5 : aucun champ inventé — `fiche_declaration` et `attestation` sont des `FichierDepose` standard
+
+  Problèmes encore en attente (étapes suivantes) :
+  - Tests côté mobile pour le parcours de demande de catégorie
+  - Validation serveur supplémentaire pour les cas C (dépôt en catégorie déjà détenue)
+
+  Vérification `npx tsc --noEmit` : 0 erreur (compilation réussie, aucun code nouveau n'a été modifié à cette étape).
+
+- ÉTAPE 10 — PROFIL DU MEMBRE (aucun fichier code modifié — aucune modification possible sans ajout de champ en base, contrainte ÉTAPE 00 respectée) :
 - ÉTAPE 12 — COTISATIONS ET HISTORIQUE DES PAIEMENTS (aucun fichier code modifié — aucune modification nécessaire, contrainte ÉTAPE 00 respectée) :
   1. `app/(membre)/paiement-membre.tsx` — lecture uniquement, aucune modification :
      - Paiement de dépôt d'œuvre (`DEPOT_OEUVRE`) uniquement ; aucune cotisation (retirée Étape 28)
